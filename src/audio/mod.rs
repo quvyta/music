@@ -395,6 +395,11 @@ impl Engine {
         let Some(mut loaded) = self.own() else { return };
         match opened {
             Ok((rate, playing)) => {
+                // A track cued at a moment says that moment from the first read after it opens,
+                // not the start it has until the seek that follows enters it there: a held
+                // player is not read again, and the screen would show its start for good.
+                let cued = (loaded.cued_at.as_secs_f64() * f64::from(rate)) as u64;
+                self.shared.meter.played.store(cued, Ordering::Relaxed);
                 loaded.rate = rate;
                 loaded.problem = None;
                 drop(loaded);

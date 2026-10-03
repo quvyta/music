@@ -2,6 +2,12 @@
 
 Every release of quvyta-music, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.1.1 - 2026-10-03
+
+### Fixed
+
+- The queue picked up at start could show its track at 0:00 instead of the moment it was left at, on a busy machine.
+
 ## 0.1.0 - 2026-10-03
 
 ### Added

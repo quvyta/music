@@ -69,11 +69,13 @@ fn the_next_and_previous_buttons_step_through_the_list() {
 #[test]
 fn a_track_chosen_while_the_sound_is_held_is_heard() {
     let scratch = Scratch::new("play-held-next");
-    let folder = albums(&scratch);
-    let mut h = open(&scratch, &folder);
-    h.press("down");
+    // Long enough that the first is still heard when the pause lands on a loaded machine.
+    tagged_wav(&scratch.path("music/1.wav"), 3.0, "Aşk İçinde", "Kalben", "Sonsuz", 1);
+    tagged_wav(&scratch.path("music/2.wav"), 3.0, "Haydi Söyle", "Kalben", "Sonsuz", 2);
+    let mut h = open(&scratch, &scratch.path("music"));
     h.press("enter");
     wait_for(&mut h, |music| music.status().position > Duration::ZERO);
+    assert_eq!(h.app().current().map(|track| track.title.as_str()), Some("Aşk İçinde"));
     click_icon(&mut h, "media-pause");
     settle(&mut h);
     assert_eq!(state(h.app()), State::Paused);
