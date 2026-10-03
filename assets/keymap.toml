@@ -1,0 +1,29 @@
+# qmus's own keys. The framework's global keys (focus, the panel, help on `?`) stay as they are;
+# quitting also answers to a plain `q`, as in most terminal players.
+
+[global]
+quit = ["ctrl+q", "q"]
+
+[app]
+# A focused table takes space for its row; `p` reaches play and pause from anywhere.
+play-pause = ["space", "p"]
+next = ["n", "ctrl+right"]
+previous = ["b", "ctrl+left"]
+now-playing = "alt+1"
+queue = "alt+2"
+tracks = "alt+3"
+albums = "alt+4"
+artists = "alt+5"
+playlists = "alt+6"
+save-queue = "ctrl+s"
+search = ["/", "ctrl+f"]
+sidebar = "ctrl+b"
+remove = "delete"
+shuffle = "x"
+repeat = "r"
+seek-forward = "shift+right"
+seek-back = "shift+left"
+volume-up = ["+", "="]
+volume-down = "-"
+settings = "ctrl+,"
+cancel = "esc"

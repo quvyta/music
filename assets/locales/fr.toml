@@ -1,0 +1,150 @@
+# Français
+
+[meta]
+name = "Français"
+code = "fr"
+fallback = "en"
+
+[music]
+too-small = "Le terminal est trop petit"
+count = { one = "{n} piste", other = "{n} pistes" }
+back = "Retour"
+
+[music.empty]
+title = "Aucune musique ici"
+text = "Il n'y a aucun fichier musical dans {folder}. Indiquez à qmus un dossier de musique : qmus ~/Music/albums"
+
+[music.column]
+playlist = "Playlist"
+number = "N°"
+title = "Titre"
+artist = "Artiste"
+album = "Album"
+time = "Durée"
+tracks = "Pistes"
+albums = "Albums"
+
+[music.player]
+play = "Lecture"
+pause = "Pause"
+next = "Piste suivante"
+previous = "Piste précédente"
+idle = "Choisissez une piste à lire"
+mute = "Couper le son"
+unmute = "Rétablir le son"
+shuffle = "Aléatoire"
+repeat-off = "Répétition : désactivée"
+repeat-all = "Répétition : toute la file"
+repeat-one = "Répétition : cette piste"
+
+[music.play]
+failed = "Impossible de lire {name}"
+
+[music.later]
+title = "Les fichiers Opus ne peuvent pas encore être lus"
+text = "qmus les affiche au lieu de les cacher ; leur lecture arrivera dans une version ultérieure."
+
+[music.output]
+lost = "La sortie audio s’est arrêtée"
+
+[music.settings]
+title = "Paramètres"
+not-saved = "Les paramètres n'ont pas pu être enregistrés"
+playing = "Lecture"
+resume = "Reprendre où vous en étiez"
+resume-text = "Au démarrage, la file de la dernière session revient, à la même piste et à la même seconde."
+visualizer = "Visualiseur"
+style = "Style"
+style-bars = "Barres"
+style-mirror = "Miroir"
+style-off = "Désactivé"
+live = "Garder en mouvement"
+live-text = "Bouge avec le son même quand les animations sont réduites."
+
+[music.cli]
+help = """
+qmus {version} : un lecteur de musique pour le terminal
+
+Usage : qmus [DOSSIER]
+
+  DOSSIER      la musique de ce dossier est affichée.
+               Sans dossier, qmus affiche votre dossier Musique.
+  --version    affiche la version
+  --help       affiche cette aide
+
+Une fois par jour au démarrage, qmus demande à crates.io si une nouvelle version est sortie ; désactivez cette option dans les paramètres."""
+missing = "qmus : {path} n'est pas un dossier"
+unknown = "qmus : option inconnue {argument} ; voir qmus --help"
+
+[keys]
+play-pause = "lecture ou pause"
+next = "piste suivante"
+previous = "piste précédente"
+settings = "paramètres"
+cancel = "fermer"
+seek-forward = "avancer de 5 secondes"
+seek-back = "reculer de 5 secondes"
+volume-up = "plus fort"
+volume-down = "moins fort"
+shuffle = "aléatoire"
+repeat = "répétition : désactivée, toute la file, cette piste"
+now-playing = "en lecture"
+tracks = "pistes"
+queue = "file"
+albums = "albums"
+artists = "artistes"
+search = "recherche"
+sidebar = "barre latérale"
+remove = "sortir de la file, ou supprimer une playlist"
+playlists = "playlists"
+save-queue = "garder la file comme playlist"
+
+[music.page]
+playlists = "Playlists"
+now-playing = "En lecture"
+nothing = "Rien n'est en lecture"
+queue = "File"
+tracks = "Pistes"
+albums = "Albums"
+artists = "Artistes"
+
+[music.search]
+placeholder = "Rechercher"
+none = "Aucun résultat"
+none-text = "Aucune piste, album ou artiste ne contient tous les mots de la recherche."
+
+[music.queue]
+empty = "La file est vide"
+
+[music.bus.elsewhere]
+title = "qmus lit la musique de son propre dossier"
+text = "{path} ne fait pas partie des pistes affichées, elle n’a donc pas été lue."
+
+[music.playlists]
+none = "Aucune playlist pour le moment"
+none-text = "Gardez la file comme playlist avec ctrl+s."
+away = { one = "{n} piste n'est pas dans ce dossier", other = "{n} pistes ne sont pas dans ce dossier" }
+unreadable = "La playlist {name} n'a pas pu être lue"
+save = "Garder la file comme playlist"
+name = "Nom"
+keep = "Garder"
+cancel = "Annuler"
+saved = "La file est gardée comme {name}"
+taken = "Une playlist de ce nom existe déjà"
+unnamed = "Une playlist doit avoir un nom"
+remove-title = "Supprimer la playlist {name} ?"
+remove-text = "Seule la playlist est supprimée. La musique qu'elle liste reste où elle est."
+remove-button = "Supprimer"
+unremoved = "La playlist {name} n'a pas pu être supprimée"
+
+[music.menu]
+play = "Lire"
+next = "Lire ensuite"
+append = "Ajouter à la fin de la file"
+playlist = "Ajouter à une playlist"
+album = "Aller à l’album"
+artist = "Aller à l’artiste"
+next-done = "{name} sera lu ensuite"
+append-done = "{name} est à la fin de la file"
+added = "{name} est ajouté à {playlist}"
+not-added = "{name} n'a pas pu être ajouté à la playlist"

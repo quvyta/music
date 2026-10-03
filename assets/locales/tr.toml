@@ -1,0 +1,149 @@
+# Türkçe.
+
+[meta]
+name = "Türkçe"
+code = "tr"
+
+[music]
+too-small = "Terminal çok küçük"
+count = { one = "{n} şarkı", other = "{n} şarkı" }
+back = "Geri"
+
+[music.empty]
+title = "Burada müzik yok"
+text = "{folder} içinde müzik dosyası yok. qmus'a bir müzik klasörü ver: qmus ~/Müzik/albümler"
+
+[music.column]
+playlist = "Çalma listesi"
+number = "No"
+title = "Şarkı"
+artist = "Sanatçı"
+album = "Albüm"
+time = "Süre"
+tracks = "Şarkı"
+albums = "Albüm"
+
+[music.player]
+play = "Çal"
+pause = "Duraklat"
+next = "Sonraki şarkı"
+previous = "Önceki şarkı"
+idle = "Çalmak için bir şarkı seç"
+mute = "Sesi kapat"
+unmute = "Sesi aç"
+shuffle = "Karıştır"
+repeat-off = "Tekrar: kapalı"
+repeat-all = "Tekrar: bütün kuyruk"
+repeat-one = "Tekrar: bu şarkı"
+
+[music.play]
+failed = "{name} çalınamadı"
+
+[music.later]
+title = "Opus dosyaları henüz çalınamıyor"
+text = "qmus bu dosyaları gizlemiyor, listede gösteriyor; çalma desteği sonraki bir sürümde gelecek."
+
+[music.page]
+playlists = "Çalma listeleri"
+now-playing = "Şimdi çalıyor"
+nothing = "Hiçbir şey çalmıyor"
+queue = "Kuyruk"
+tracks = "Şarkılar"
+albums = "Albümler"
+artists = "Sanatçılar"
+
+[music.search]
+placeholder = "Ara"
+none = "Bir şey bulunamadı"
+none-text = "Aranan kelimelerin hepsini taşıyan bir şarkı, albüm ya da sanatçı yok."
+
+[music.queue]
+empty = "Kuyruk boş"
+
+[music.output]
+lost = "Ses çıkışı durdu"
+
+[music.bus.elsewhere]
+title = "qmus kendi klasöründeki müziği çalar"
+text = "{path} listedeki şarkılar arasında değil, bu yüzden çalınmadı."
+
+[music.playlists]
+none = "Henüz çalma listesi yok"
+none-text = "Kuyruğu ctrl+s ile çalma listesi olarak saklayın."
+away = { one = "{n} şarkı bu klasörde değil", other = "{n} şarkı bu klasörde değil" }
+unreadable = "{name} çalma listesi okunamadı"
+save = "Kuyruğu çalma listesi olarak sakla"
+name = "Ad"
+keep = "Sakla"
+cancel = "Vazgeç"
+saved = "Kuyruk {name} adıyla saklandı"
+taken = "Bu adda bir çalma listesi zaten var"
+unnamed = "Çalma listesinin bir adı olmalı"
+remove-title = "{name} çalma listesi silinsin mi?"
+remove-text = "Yalnızca liste silinir. Listedeki müzik olduğu yerde kalır."
+remove-button = "Sil"
+unremoved = "{name} çalma listesi silinemedi"
+
+[music.menu]
+play = "Çal"
+next = "Sıradaki olarak çal"
+append = "Kuyruğun sonuna ekle"
+playlist = "Çalma listesine ekle"
+album = "Albüme git"
+artist = "Sanatçıya git"
+next-done = "Sıradaki şarkı {name}"
+append-done = "{name} kuyruğun sonunda"
+added = "{name}, {playlist} listesine eklendi"
+not-added = "{name} çalma listesine eklenemedi"
+
+[music.settings]
+title = "Ayarlar"
+not-saved = "Ayarlar kaydedilemedi"
+playing = "Çalma"
+resume = "Kaldığın yerden sürdür"
+resume-text = "Açılışta son kuyruk, aynı şarkıda ve aynı saniyede duraklatılmış olarak geri gelir."
+visualizer = "Görselleştirici"
+style = "Biçim"
+style-bars = "Sütunlar"
+style-mirror = "Ayna"
+style-off = "Kapalı"
+live = "Hep hareketli"
+live-text = "Hareketi azalt açıkken de sesle birlikte hareket eder."
+
+[music.cli]
+help = """
+qmus {version}: terminalde müzik çalar
+
+Kullanım: qmus [KLASÖR]
+
+  KLASÖR       bu klasördeki müzik gösterilir.
+               Klasör verilmezse qmus Müzik klasörünü gösterir.
+  --version    sürümü yaz
+  --help       bu yardımı yaz
+
+qmus açılışta günde bir kez crates.io'ya yeni bir sürüm çıkıp çıkmadığını sorar; ayarlardan kapatılır."""
+missing = "qmus: {path} bir klasör değil"
+unknown = "qmus: bilinmeyen seçenek {argument}; qmus --help'e bak"
+
+[keys]
+play-pause = "çal ya da duraklat"
+next = "sonraki şarkı"
+previous = "önceki şarkı"
+settings = "ayarlar"
+cancel = "kapat"
+seek-forward = "5 saniye ileri"
+seek-back = "5 saniye geri"
+volume-up = "sesi artır"
+volume-down = "sesi azalt"
+shuffle = "karıştır"
+repeat = "tekrar: kapalı, hepsi, bu şarkı"
+now-playing = "şimdi çalıyor"
+tracks = "şarkılar"
+queue = "kuyruk"
+albums = "albümler"
+artists = "sanatçılar"
+search = "ara"
+sidebar = "kenar çubuğu"
+remove = "kuyruktan çıkar ya da çalma listesini sil"
+playlists = "çalma listeleri"
+save-queue = "kuyruğu çalma listesi olarak sakla"

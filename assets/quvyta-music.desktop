@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Quvyta Music
+GenericName=Music Player
+Comment=Play your music in the terminal
+Exec=qmus
+Terminal=true
+Icon=multimedia-audio-player
+Categories=AudioVideo;Audio;Player;ConsoleOnly;
+Keywords=music;player;audio;songs;albums;

@@ -1,0 +1,150 @@
+# 简体中文
+
+[meta]
+name = "简体中文"
+code = "zh-Hans"
+fallback = "en"
+
+[music]
+too-small = "终端窗口太小"
+count = { other = "{n} 首曲目" }
+back = "返回"
+
+[music.empty]
+title = "这里没有音乐"
+text = "{folder} 中没有音乐文件。给 qmus 一个音乐文件夹：qmus ~/Music/albums"
+
+[music.column]
+playlist = "播放列表"
+number = "序号"
+title = "标题"
+artist = "艺术家"
+album = "专辑"
+time = "时长"
+tracks = "曲目"
+albums = "专辑"
+
+[music.player]
+play = "播放"
+pause = "暂停"
+next = "下一首"
+previous = "上一首"
+idle = "选择一首曲目播放"
+mute = "静音"
+unmute = "取消静音"
+shuffle = "随机播放"
+repeat-off = "循环：关闭"
+repeat-all = "循环：整个队列"
+repeat-one = "循环：当前曲目"
+
+[music.play]
+failed = "无法播放 {name}"
+
+[music.later]
+title = "暂时无法播放 Opus 文件"
+text = "qmus 会显示这些文件而不是隐藏它们；播放功能将在后续版本中加入。"
+
+[music.output]
+lost = "声音输出已停止"
+
+[music.settings]
+title = "设置"
+not-saved = "无法保存设置"
+playing = "播放"
+resume = "从上次中断处继续"
+resume-text = "启动时会恢复上次退出时的队列，并停留在同一曲目和同一秒。"
+visualizer = "可视化"
+style = "样式"
+style-bars = "柱状"
+style-mirror = "镜像"
+style-off = "关闭"
+live = "保持动态"
+live-text = "即使减少了动态效果，也会随声音而动。"
+
+[music.cli]
+help = """
+qmus {version}：终端音乐播放器
+
+用法: qmus [FOLDER]
+
+  FOLDER       显示该文件夹中的音乐。
+               不指定文件夹时，qmus 显示你的 Music 文件夹。
+  --version    打印版本
+  --help       打印此帮助
+
+每天启动时 qmus 会向 crates.io 查询是否有新版本；可在设置中关闭。"""
+missing = "qmus: {path} 不是文件夹"
+unknown = "qmus: 未知选项 {argument}；参见 qmus --help"
+
+[keys]
+play-pause = "播放或暂停"
+next = "下一首"
+previous = "上一首"
+settings = "设置"
+cancel = "关闭"
+seek-forward = "前进 5 秒"
+seek-back = "后退 5 秒"
+volume-up = "调大音量"
+volume-down = "调小音量"
+shuffle = "随机播放"
+repeat = "循环：关闭、全部、当前曲目"
+now-playing = "正在播放"
+tracks = "曲目列表"
+queue = "队列"
+albums = "专辑"
+artists = "艺术家"
+search = "搜索"
+sidebar = "侧边栏"
+remove = "从队列中移出，或移除播放列表"
+playlists = "播放列表"
+save-queue = "将队列保存为播放列表"
+
+[music.page]
+playlists = "播放列表"
+now-playing = "正在播放"
+nothing = "没有正在播放的曲目"
+queue = "队列"
+tracks = "曲目"
+albums = "专辑"
+artists = "艺术家"
+
+[music.search]
+placeholder = "搜索"
+none = "没有找到"
+none-text = "没有曲目、专辑或艺术家包含搜索的全部词语。"
+
+[music.queue]
+empty = "队列为空"
+
+[music.bus.elsewhere]
+title = "qmus 只播放其文件夹中的音乐"
+text = "{path} 不在显示的曲目中，因此未被播放。"
+
+[music.playlists]
+none = "还没有播放列表"
+none-text = "按 ctrl+s 可将队列保存为播放列表。"
+away = { other = "{n} 首曲目不在此文件夹中" }
+unreadable = "无法读取播放列表 {name}"
+save = "将队列保存为播放列表"
+name = "名称"
+keep = "保存"
+cancel = "取消"
+saved = "队列已保存为 {name}"
+taken = "已存在同名播放列表"
+unnamed = "播放列表需要一个名称"
+remove-title = "移除播放列表 {name}？"
+remove-text = "只会移除播放列表本身。其中的音乐仍留在原处。"
+remove-button = "移除"
+unremoved = "无法移除播放列表 {name}"
+
+[music.menu]
+play = "播放"
+next = "下一个播放"
+append = "添加到队列末尾"
+playlist = "添加到播放列表"
+album = "转到专辑"
+artist = "转到艺术家"
+next-done = "{name} 将在下一个播放"
+append-done = "{name} 已添加到队列末尾"
+added = "{name} 已添加到 {playlist}"
+not-added = "无法将 {name} 添加到播放列表"

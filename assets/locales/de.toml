@@ -1,0 +1,150 @@
+# Deutsch
+
+[meta]
+name = "Deutsch"
+code = "de"
+fallback = "en"
+
+[music]
+too-small = "Das Terminal ist zu klein"
+count = { one = "{n} Titel", other = "{n} Titel" }
+back = "Zurück"
+
+[music.empty]
+title = "Keine Musik hier"
+text = "In {folder} liegen keine Musikdateien. Gib qmus einen Ordner mit Musik: qmus ~/Music/albums"
+
+[music.column]
+playlist = "Playlist"
+number = "Nr."
+title = "Titel"
+artist = "Künstler"
+album = "Album"
+time = "Dauer"
+tracks = "Titel"
+albums = "Alben"
+
+[music.player]
+play = "Abspielen"
+pause = "Pause"
+next = "Nächster Titel"
+previous = "Vorheriger Titel"
+idle = "Wähle einen Titel zum Abspielen"
+mute = "Stummschalten"
+unmute = "Stummschaltung aufheben"
+shuffle = "Zufallswiedergabe"
+repeat-off = "Wiederholen: aus"
+repeat-all = "Wiederholen: die ganze Warteschlange"
+repeat-one = "Wiederholen: diesen Titel"
+
+[music.play]
+failed = "{name} konnte nicht abgespielt werden"
+
+[music.later]
+title = "Opus-Dateien können noch nicht abgespielt werden"
+text = "qmus zeigt sie an, statt sie zu verstecken; das Abspielen kommt in einer späteren Version."
+
+[music.output]
+lost = "Die Tonausgabe wurde beendet"
+
+[music.settings]
+title = "Einstellungen"
+not-saved = "Die Einstellungen konnten nicht gespeichert werden"
+playing = "Wiedergabe"
+resume = "Dort weitermachen, wo du aufgehört hast"
+resume-text = "Beim Start kommt die Warteschlange der letzten Sitzung zurück, am gleichen Titel und an der gleichen Sekunde."
+visualizer = "Visualizer"
+style = "Stil"
+style-bars = "Balken"
+style-mirror = "Spiegel"
+style-off = "Aus"
+live = "In Bewegung bleiben"
+live-text = "Bewegt sich mit dem Klang, auch wenn Bewegung reduziert ist."
+
+[music.cli]
+help = """
+qmus {version}: ein Musikplayer fürs Terminal
+
+Aufruf: qmus [FOLDER]
+
+  FOLDER       die Musik dieses Ordners wird angezeigt.
+               Ohne Ordner zeigt qmus deinen Musik-Ordner.
+  --version    gibt die Version aus
+  --help       zeigt diese Hilfe
+
+Einmal am Tag fragt qmus beim Start crates.io, ob es eine neuere Version gibt; in den Einstellungen kannst du das abschalten."""
+missing = "qmus: {path} ist kein Ordner"
+unknown = "qmus: unbekannte Option {argument}; siehe qmus --help"
+
+[keys]
+play-pause = "abspielen oder pausieren"
+next = "nächster Titel"
+previous = "vorheriger Titel"
+settings = "Einstellungen"
+cancel = "schließen"
+seek-forward = "5 Sekunden vor"
+seek-back = "5 Sekunden zurück"
+volume-up = "lauter"
+volume-down = "leiser"
+shuffle = "Zufallswiedergabe"
+repeat = "wiederholen: aus, alle, diesen Titel"
+now-playing = "läuft gerade"
+tracks = "Titel"
+queue = "Warteschlange"
+albums = "Alben"
+artists = "Künstler"
+search = "Suche"
+sidebar = "Seitenleiste"
+remove = "aus der Warteschlange nehmen oder eine Playlist entfernen"
+playlists = "Playlists"
+save-queue = "Warteschlange als Playlist speichern"
+
+[music.page]
+playlists = "Playlists"
+now-playing = "Läuft gerade"
+nothing = "Nichts läuft"
+queue = "Warteschlange"
+tracks = "Titel"
+albums = "Alben"
+artists = "Künstler"
+
+[music.search]
+placeholder = "Suchen"
+none = "Nichts gefunden"
+none-text = "Kein Titel, Album oder Künstler enthält alle Wörter der Suche."
+
+[music.queue]
+empty = "Die Warteschlange ist leer"
+
+[music.bus.elsewhere]
+title = "qmus spielt die Musik seines eigenen Ordners"
+text = "{path} ist nicht unter den angezeigten Titeln, daher wurde er nicht abgespielt."
+
+[music.playlists]
+none = "Noch keine Playlists"
+none-text = "Speichere die Warteschlange als Playlist mit ctrl+s."
+away = { one = "{n} Titel ist nicht in diesem Ordner", other = "{n} Titel sind nicht in diesem Ordner" }
+unreadable = "Die Playlist {name} konnte nicht gelesen werden"
+save = "Warteschlange als Playlist speichern"
+name = "Name"
+keep = "Speichern"
+cancel = "Abbrechen"
+saved = "Die Warteschlange ist als {name} gespeichert"
+taken = "Eine Playlist mit diesem Namen gibt es schon"
+unnamed = "Eine Playlist braucht einen Namen"
+remove-title = "Die Playlist {name} entfernen?"
+remove-text = "Nur die Playlist wird entfernt. Die Musik darin bleibt, wo sie ist."
+remove-button = "Entfernen"
+unremoved = "Die Playlist {name} konnte nicht entfernt werden"
+
+[music.menu]
+play = "Abspielen"
+next = "Als Nächstes abspielen"
+append = "Ans Ende der Warteschlange anhängen"
+playlist = "Zu einer Playlist hinzufügen"
+album = "Zum Album"
+artist = "Zum Künstler"
+next-done = "{name} wird als Nächstes abgespielt"
+append-done = "{name} ist am Ende der Warteschlange"
+added = "{name} wurde zu {playlist} hinzugefügt"
+not-added = "{name} konnte nicht zur Playlist hinzugefügt werden"

@@ -1,0 +1,149 @@
+# English: the final fallback language. Every other language file is checked against this one.
+
+[meta]
+name = "English"
+code = "en"
+
+[music]
+too-small = "The terminal is too small"
+count = { one = "{n} track", other = "{n} tracks" }
+back = "Back"
+
+[music.empty]
+title = "No music here"
+text = "There are no music files in {folder}. Give qmus a folder of music: qmus ~/Music/albums"
+
+[music.column]
+playlist = "Playlist"
+number = "No."
+title = "Title"
+artist = "Artist"
+album = "Album"
+time = "Time"
+tracks = "Tracks"
+albums = "Albums"
+
+[music.player]
+play = "Play"
+pause = "Pause"
+next = "Next track"
+previous = "Previous track"
+idle = "Choose a track to play"
+mute = "Mute"
+unmute = "Unmute"
+shuffle = "Shuffle"
+repeat-off = "Repeat: off"
+repeat-all = "Repeat: the whole queue"
+repeat-one = "Repeat: this track"
+
+[music.play]
+failed = "{name} could not be played"
+
+[music.later]
+title = "Opus files cannot be played yet"
+text = "qmus shows them instead of hiding them; playing them comes in a later version."
+
+[music.page]
+playlists = "Playlists"
+now-playing = "Now playing"
+nothing = "Nothing is playing"
+queue = "Queue"
+tracks = "Tracks"
+albums = "Albums"
+artists = "Artists"
+
+[music.search]
+placeholder = "Search"
+none = "Nothing found"
+none-text = "No track, album or artist has every word of the search."
+
+[music.queue]
+empty = "The queue is empty"
+
+[music.output]
+lost = "The sound output stopped"
+
+[music.bus.elsewhere]
+title = "qmus plays the music of its own folder"
+text = "{path} is not among the tracks shown, so it was not played."
+
+[music.playlists]
+none = "No playlists yet"
+none-text = "Keep the queue as a playlist with ctrl+s."
+away = { one = "{n} track is not in this folder", other = "{n} tracks are not in this folder" }
+unreadable = "The playlist {name} could not be read"
+save = "Keep the queue as a playlist"
+name = "Name"
+keep = "Keep"
+cancel = "Cancel"
+saved = "The queue is kept as {name}"
+taken = "A playlist of that name is already there"
+unnamed = "A playlist needs a name"
+remove-title = "Remove the playlist {name}?"
+remove-text = "Only the playlist goes. The music it lists stays where it is."
+remove-button = "Remove"
+unremoved = "The playlist {name} could not be removed"
+
+[music.menu]
+play = "Play"
+next = "Play next"
+append = "Add to the end of the queue"
+playlist = "Add to a playlist"
+album = "Go to the album"
+artist = "Go to the artist"
+next-done = "{name} plays next"
+append-done = "{name} is at the end of the queue"
+added = "{name} is added to {playlist}"
+not-added = "{name} could not be added to the playlist"
+
+[music.settings]
+title = "Settings"
+not-saved = "The settings could not be saved"
+playing = "Playing"
+resume = "Pick up where you left off"
+resume-text = "At start, the queue of the last run comes back, held at the same track and second."
+visualizer = "Visualizer"
+style = "Style"
+style-bars = "Bars"
+style-mirror = "Mirror"
+style-off = "Off"
+live = "Keep it moving"
+live-text = "Moves with the sound even when motion is reduced."
+
+[music.cli]
+help = """
+qmus {version}: a music player for the terminal
+
+Usage: qmus [FOLDER]
+
+  FOLDER       the music of this folder is shown.
+               Without a folder qmus shows your Music folder.
+  --version    print the version
+  --help       print this help
+
+Once a day at start qmus asks crates.io whether a newer version is out; turn it off in the settings."""
+missing = "qmus: {path} is not a folder"
+unknown = "qmus: unknown option {argument}; see qmus --help"
+
+[keys]
+play-pause = "play or pause"
+next = "next track"
+previous = "previous track"
+settings = "settings"
+cancel = "close"
+seek-forward = "5 seconds forward"
+seek-back = "5 seconds back"
+volume-up = "louder"
+volume-down = "quieter"
+shuffle = "shuffle"
+repeat = "repeat: off, all, this track"
+now-playing = "now playing"
+tracks = "tracks"
+queue = "queue"
+albums = "albums"
+artists = "artists"
+search = "search"
+sidebar = "side bar"
+remove = "take out of the queue, or remove a playlist"
+playlists = "playlists"
+save-queue = "keep the queue as a playlist"

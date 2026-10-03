@@ -1,0 +1,150 @@
+# Español
+
+[meta]
+name = "Español"
+code = "es"
+fallback = "en"
+
+[music]
+too-small = "La terminal es demasiado pequeña"
+count = { one = "{n} pista", other = "{n} pistas" }
+back = "Atrás"
+
+[music.empty]
+title = "No hay música aquí"
+text = "No hay archivos de música en {folder}. Dale a qmus una carpeta con música: qmus ~/Music/albums"
+
+[music.column]
+playlist = "Lista"
+number = "N.º"
+title = "Título"
+artist = "Artista"
+album = "Álbum"
+time = "Tiempo"
+tracks = "Pistas"
+albums = "Álbumes"
+
+[music.player]
+play = "Reproducir"
+pause = "Pausar"
+next = "Pista siguiente"
+previous = "Pista anterior"
+idle = "Elige una pista para reproducir"
+mute = "Silenciar"
+unmute = "Activar sonido"
+shuffle = "Aleatorio"
+repeat-off = "Repetir: no"
+repeat-all = "Repetir: toda la cola"
+repeat-one = "Repetir: esta pista"
+
+[music.play]
+failed = "No se pudo reproducir {name}"
+
+[music.later]
+title = "Los archivos Opus aún no se pueden reproducir"
+text = "qmus los muestra en lugar de ocultarlos; la reproducción llegará en una versión posterior."
+
+[music.output]
+lost = "La salida de sonido se detuvo"
+
+[music.settings]
+title = "Ajustes"
+not-saved = "No se pudieron guardar los ajustes"
+playing = "Reproducción"
+resume = "Retomar donde lo dejaste"
+resume-text = "Al arrancar, vuelve la cola de la última sesión, en la misma pista y segundo."
+visualizer = "Visualizador"
+style = "Estilo"
+style-bars = "Barras"
+style-mirror = "Espejo"
+style-off = "Apagado"
+live = "Mantener el movimiento"
+live-text = "Se mueve con el sonido incluso cuando el movimiento está reducido."
+
+[music.cli]
+help = """
+qmus {version}: un reproductor de música para la terminal
+
+Uso: qmus [CARPETA]
+
+  CARPETA      muestra la música de esta carpeta.
+               Sin carpeta, qmus muestra tu carpeta Música.
+  --version    muestra la versión
+  --help       muestra esta ayuda
+
+Una vez al día, al arrancar, qmus le pregunta a crates.io si hay una versión más nueva; puedes desactivarlo en los ajustes."""
+missing = "qmus: {path} no es una carpeta"
+unknown = "qmus: opción desconocida {argument}; consulta qmus --help"
+
+[keys]
+play-pause = "reproducir o pausar"
+next = "pista siguiente"
+previous = "pista anterior"
+settings = "ajustes"
+cancel = "cerrar"
+seek-forward = "5 segundos adelante"
+seek-back = "5 segundos atrás"
+volume-up = "subir volumen"
+volume-down = "bajar volumen"
+shuffle = "aleatorio"
+repeat = "repetir: no, toda la cola, esta pista"
+now-playing = "reproduciendo ahora"
+tracks = "pistas"
+queue = "cola"
+albums = "álbumes"
+artists = "artistas"
+search = "buscar"
+sidebar = "barra lateral"
+remove = "sacar de la cola o quitar una lista"
+playlists = "listas"
+save-queue = "guardar la cola como lista"
+
+[music.page]
+playlists = "Listas"
+now-playing = "Reproduciendo ahora"
+nothing = "Nada en reproducción"
+queue = "Cola"
+tracks = "Pistas"
+albums = "Álbumes"
+artists = "Artistas"
+
+[music.search]
+placeholder = "Buscar"
+none = "No se encontró nada"
+none-text = "Ninguna pista, álbum o artista contiene todas las palabras de la búsqueda."
+
+[music.queue]
+empty = "La cola está vacía"
+
+[music.bus.elsewhere]
+title = "qmus reproduce la música de su propia carpeta"
+text = "{path} no está entre las pistas mostradas, así que no se reprodujo."
+
+[music.playlists]
+none = "Aún no hay listas"
+none-text = "Guarda la cola como lista con ctrl+s."
+away = { one = "{n} pista no está en esta carpeta", other = "{n} pistas no están en esta carpeta" }
+unreadable = "No se pudo leer la lista {name}"
+save = "Guardar la cola como lista"
+name = "Nombre"
+keep = "Guardar"
+cancel = "Cancelar"
+saved = "La cola se guardó como {name}"
+taken = "Ya existe una lista con ese nombre"
+unnamed = "La lista necesita un nombre"
+remove-title = "¿Quitar la lista {name}?"
+remove-text = "Solo se quita la lista. La música que contiene se queda donde está."
+remove-button = "Quitar"
+unremoved = "No se pudo quitar la lista {name}"
+
+[music.menu]
+play = "Reproducir"
+next = "Reproducir a continuación"
+append = "Añadir al final de la cola"
+playlist = "Añadir a una lista"
+album = "Ir al álbum"
+artist = "Ir al artista"
+next-done = "{name} suena a continuación"
+append-done = "{name} está al final de la cola"
+added = "{name} se ha añadido a {playlist}"
+not-added = "No se pudo añadir {name} a la lista"

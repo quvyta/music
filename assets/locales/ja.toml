@@ -1,0 +1,150 @@
+# 日本語
+
+[meta]
+name = "日本語"
+code = "ja"
+fallback = "en"
+
+[music]
+too-small = "ターミナルが小さすぎます"
+count = { other = "{n} 曲" }
+back = "戻る"
+
+[music.empty]
+title = "音楽がありません"
+text = "{folder} に音楽ファイルがありません。qmus に音楽フォルダを指定してください: qmus ~/Music/albums"
+
+[music.column]
+playlist = "プレイリスト"
+number = "番号"
+title = "タイトル"
+artist = "アーティスト"
+album = "アルバム"
+time = "時間"
+tracks = "曲数"
+albums = "アルバム数"
+
+[music.player]
+play = "再生"
+pause = "一時停止"
+next = "次の曲"
+previous = "前の曲"
+idle = "再生する曲を選んでください"
+mute = "ミュート"
+unmute = "ミュート解除"
+shuffle = "シャッフル"
+repeat-off = "リピート: オフ"
+repeat-all = "リピート: キュー全体"
+repeat-one = "リピート: この曲"
+
+[music.play]
+failed = "{name} を再生できませんでした"
+
+[music.later]
+title = "Opus ファイルはまだ再生できません"
+text = "qmus はこれらを隠さずに表示します。再生は今後のバージョンで対応予定です。"
+
+[music.output]
+lost = "音声出力が停止しました"
+
+[music.settings]
+title = "設定"
+not-saved = "設定を保存できませんでした"
+playing = "再生"
+resume = "前回の続きから再開"
+resume-text = "起動時に、前回終了時のキューが同じ曲の同じ秒の位置で復元されます。"
+visualizer = "ビジュアライザー"
+style = "スタイル"
+style-bars = "バー"
+style-mirror = "ミラー"
+style-off = "オフ"
+live = "動きを続ける"
+live-text = "モーション軽減が有効でも音に合わせて動きます。"
+
+[music.cli]
+help = """
+qmus {version}: ターミナル用ミュージックプレーヤー
+
+使用法: qmus [FOLDER]
+
+  FOLDER       このフォルダの音楽を表示します。
+               フォルダを指定しない場合、qmus は Music フォルダを表示します。
+  --version    バージョンを表示します
+  --help       このヘルプを表示します
+
+起動時に1日1回、crates.io に新しいバージョンがあるか確認します。設定で無効にできます。"""
+missing = "qmus: {path} はフォルダではありません"
+unknown = "qmus: 不明なオプション {argument} です。qmus --help を参照してください"
+
+[keys]
+play-pause = "再生・一時停止"
+next = "次の曲"
+previous = "前の曲"
+settings = "設定"
+cancel = "閉じる"
+seek-forward = "5秒進む"
+seek-back = "5秒戻る"
+volume-up = "音量を上げる"
+volume-down = "音量を下げる"
+shuffle = "シャッフル"
+repeat = "リピート: オフ、全体、この曲"
+now-playing = "再生中"
+tracks = "曲一覧"
+queue = "キュー"
+albums = "アルバム"
+artists = "アーティスト"
+search = "検索"
+sidebar = "サイドバー"
+remove = "キューから外す、プレイリストを削除"
+playlists = "プレイリスト"
+save-queue = "キューをプレイリストとして保存"
+
+[music.page]
+playlists = "プレイリスト"
+now-playing = "再生中"
+nothing = "再生中の曲はありません"
+queue = "キュー"
+tracks = "曲"
+albums = "アルバム"
+artists = "アーティスト"
+
+[music.search]
+placeholder = "検索"
+none = "何も見つかりません"
+none-text = "検索語のすべての単語を含む曲、アルバム、アーティストはありません。"
+
+[music.queue]
+empty = "キューは空です"
+
+[music.bus.elsewhere]
+title = "qmus は自分のフォルダ内の音楽を再生します"
+text = "{path} は表示中の曲に含まれていないため、再生されませんでした。"
+
+[music.playlists]
+none = "プレイリストはまだありません"
+none-text = "ctrl+s でキューをプレイリストとして保存できます。"
+away = { other = "{n} 曲がこのフォルダにありません" }
+unreadable = "プレイリスト {name} を読み込めませんでした"
+save = "キューをプレイリストとして保存"
+name = "名前"
+keep = "保存"
+cancel = "キャンセル"
+saved = "キューを {name} として保存しました"
+taken = "その名前のプレイリストはすでにあります"
+unnamed = "プレイリストには名前が必要です"
+remove-title = "プレイリスト {name} を削除しますか?"
+remove-text = "削除されるのはプレイリストだけです。曲自体はそのまま残ります。"
+remove-button = "削除"
+unremoved = "プレイリスト {name} を削除できませんでした"
+
+[music.menu]
+play = "再生"
+next = "次に再生"
+append = "キューの末尾に追加"
+playlist = "プレイリストに追加"
+album = "アルバムへ移動"
+artist = "アーティストへ移動"
+next-done = "{name} が次に再生されます"
+append-done = "{name} がキューの末尾にあります"
+added = "{name} を {playlist} に追加しました"
+not-added = "{name} をプレイリストに追加できませんでした"

@@ -1,0 +1,150 @@
+# Português (Brasil)
+
+[meta]
+name = "Português (Brasil)"
+code = "pt-BR"
+fallback = "en"
+
+[music]
+too-small = "O terminal é muito pequeno"
+count = { one = "{n} faixa", other = "{n} faixas" }
+back = "Voltar"
+
+[music.empty]
+title = "Nenhuma música aqui"
+text = "Não há arquivos de música em {folder}. Dê ao qmus uma pasta com músicas: qmus ~/Music/albums"
+
+[music.column]
+playlist = "Playlist"
+number = "Nº"
+title = "Título"
+artist = "Artista"
+album = "Álbum"
+time = "Duração"
+tracks = "Faixas"
+albums = "Álbuns"
+
+[music.player]
+play = "Reproduzir"
+pause = "Pausar"
+next = "Próxima faixa"
+previous = "Faixa anterior"
+idle = "Escolha uma faixa para reproduzir"
+mute = "Silenciar"
+unmute = "Ativar som"
+shuffle = "Aleatório"
+repeat-off = "Repetir: desativado"
+repeat-all = "Repetir: a fila inteira"
+repeat-one = "Repetir: esta faixa"
+
+[music.play]
+failed = "{name} não pôde ser reproduzido"
+
+[music.later]
+title = "Arquivos Opus ainda não podem ser tocados"
+text = "O qmus os mostra em vez de escondê-los; a reprodução chega em uma versão futura."
+
+[music.output]
+lost = "A saída de som parou"
+
+[music.settings]
+title = "Configurações"
+not-saved = "Não foi possível salvar as configurações"
+playing = "Reprodução"
+resume = "Retomar de onde parou"
+resume-text = "Na inicialização, a fila da última execução volta, mantida na mesma faixa e segundo."
+visualizer = "Visualizador"
+style = "Estilo"
+style-bars = "Barras"
+style-mirror = "Espelho"
+style-off = "Desativado"
+live = "Manter em movimento"
+live-text = "Move-se com o som mesmo quando o movimento é reduzido."
+
+[music.cli]
+help = """
+qmus {version}: um reprodutor de música para o terminal
+
+Uso: qmus [PASTA]
+
+  PASTA        a música desta pasta é exibida.
+               Sem uma pasta, o qmus mostra sua pasta Music.
+  --version    mostra a versão
+  --help       mostra esta ajuda
+
+Uma vez por dia, na inicialização, o qmus pergunta ao crates.io se há uma versão mais nova; desative isso nas configurações."""
+missing = "qmus: {path} não é uma pasta"
+unknown = "qmus: opção desconhecida {argument}; veja qmus --help"
+
+[keys]
+play-pause = "reproduzir ou pausar"
+next = "próxima faixa"
+previous = "faixa anterior"
+settings = "configurações"
+cancel = "fechar"
+seek-forward = "avançar 5 segundos"
+seek-back = "voltar 5 segundos"
+volume-up = "mais alto"
+volume-down = "mais baixo"
+shuffle = "aleatório"
+repeat = "repetir: desativado, tudo, esta faixa"
+now-playing = "reproduzindo agora"
+tracks = "faixas"
+queue = "fila"
+albums = "álbuns"
+artists = "artistas"
+search = "pesquisar"
+sidebar = "barra lateral"
+remove = "tirar da fila, ou remover uma playlist"
+playlists = "playlists"
+save-queue = "guardar a fila como uma playlist"
+
+[music.page]
+playlists = "Playlists"
+now-playing = "Reproduzindo agora"
+nothing = "Nada está reproduzindo"
+queue = "Fila"
+tracks = "Faixas"
+albums = "Álbuns"
+artists = "Artistas"
+
+[music.search]
+placeholder = "Pesquisar"
+none = "Nada encontrado"
+none-text = "Nenhuma faixa, álbum ou artista contém todas as palavras da pesquisa."
+
+[music.queue]
+empty = "A fila está vazia"
+
+[music.bus.elsewhere]
+title = "O qmus reproduz a música da sua própria pasta"
+text = "{path} não está entre as faixas exibidas, então não foi reproduzida."
+
+[music.playlists]
+none = "Nenhuma playlist ainda"
+none-text = "Guarde a fila como uma playlist com ctrl+s."
+away = { one = "{n} faixa não está nesta pasta", other = "{n} faixas não estão nesta pasta" }
+unreadable = "A playlist {name} não pôde ser lida"
+save = "Guardar a fila como uma playlist"
+name = "Nome"
+keep = "Guardar"
+cancel = "Cancelar"
+saved = "A fila foi guardada como {name}"
+taken = "Já existe uma playlist com esse nome"
+unnamed = "Uma playlist precisa de um nome"
+remove-title = "Remover a playlist {name}?"
+remove-text = "Só a playlist é removida. As músicas que ela lista ficam onde estão."
+remove-button = "Remover"
+unremoved = "A playlist {name} não pôde ser removida"
+
+[music.menu]
+play = "Reproduzir"
+next = "Reproduzir em seguida"
+append = "Adicionar ao final da fila"
+playlist = "Adicionar a uma playlist"
+album = "Ir para o álbum"
+artist = "Ir para o artista"
+next-done = "{name} toca em seguida"
+append-done = "{name} está no final da fila"
+added = "{name} foi adicionado a {playlist}"
+not-added = "{name} não pôde ser adicionado à playlist"
