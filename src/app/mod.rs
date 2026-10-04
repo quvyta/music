@@ -283,6 +283,14 @@ pub struct Music {
     dialog: Option<playlists::Dialog>,
     /// What qmus's own settings say.
     choices: settings::Choices,
+    /// The folders the person added to the library, beside `folder`.
+    added: Vec<PathBuf>,
+    /// The folder picker that adds one, while it is open.
+    picker: Option<qframe::widgets::FileBrowser>,
+    /// Whether the folders are being read.
+    reading: bool,
+    /// Whether a list of tracks has been shown, so the queue of the last run is taken up once.
+    listed: bool,
     /// qmus on the session bus, once it has taken its place there.
     mpris: Option<Arc<crate::mpris::Server>>,
 }
@@ -296,8 +304,10 @@ impl std::fmt::Debug for Music {
 /// Everything that can happen on this screen.
 #[derive(Debug, Clone)]
 pub enum Msg {
-    /// The folder has been read.
+    /// The folders have been read.
     Scanned(Arc<[Track]>),
+    /// The index of the last run has been read.
+    Indexed(Arc<[Track]>),
     /// The cursor moved to this row.
     Select(usize),
     /// This row was chosen: its track plays.
@@ -364,6 +374,7 @@ impl Music {
             .map_or(100, |level| level.min(100));
         player.set_volume(volume);
         let choices = settings::Choices::of(&settings);
+        let added = settings::added_folders(&settings);
         Self {
             machine,
             folder,
@@ -406,6 +417,10 @@ impl Music {
             art: None,
             covers: Vec::new(),
             choices,
+            added,
+            picker: None,
+            reading: false,
+            listed: false,
             shelf: playlists::Shelf::default(),
             dialog: None,
             mpris: None,
@@ -418,9 +433,21 @@ impl Music {
         &self.folder
     }
 
-    /// The folder whose music is shown, as the screen writes it: under the home folder, from `~`.
+    /// The folder whose music is shown, as the screen writes it: under the home folder, from `~`,
+    /// and how many folders were added beside it.
     fn folder_shown(&self) -> String {
-        qframe::storage::display_home_with(&self.folder, self.machine.home.as_deref())
+        let folder = qframe::storage::display_home_with(&self.folder, self.machine.home.as_deref());
+        if self.added.is_empty() { folder } else { format!("{folder} +{}", self.added.len()) }
+    }
+
+    /// The folders the library is read from: the one qmus opens with, then those added.
+    fn sources(&self) -> Vec<PathBuf> {
+        std::iter::once(self.folder.clone()).chain(self.added.iter().cloned()).collect()
+    }
+
+    /// Where the library's index is kept between runs; `None` keeps none.
+    fn index_file(&self) -> Option<PathBuf> {
+        self.machine.state.as_ref().map(|state| state.join("library.index"))
     }
 
     /// Where the player stood when the screen last read it.
@@ -458,10 +485,57 @@ impl Music {
         Command::check_for_update(check)
     }
 
-    /// Reads the folder off the drawing thread.
-    fn scan(&self) -> Command<Msg> {
-        let folder = self.folder.clone();
-        Command::perform(move || Msg::Scanned(library::scan(&folder).into()))
+    /// Reads the folders off the drawing thread, the tags only of files new or changed since the
+    /// index was written.
+    fn scan(&mut self) -> Command<Msg> {
+        self.reading = true;
+        let sources = self.sources();
+        let index = self.index_file();
+        Command::perform(move || {
+            let tracks = match index {
+                Some(index) => library::scan_with_index(&sources, &index),
+                None => library::scan_all(&sources),
+            };
+            Msg::Scanned(tracks.into())
+        })
+    }
+
+    /// The tracks the index of the last run holds, shown while the folders are read again.
+    fn read_index(&self) -> Command<Msg> {
+        let Some(index) = self.index_file() else { return Command::none() };
+        Command::perform(move || Msg::Indexed(library::read_index(&index).into()))
+    }
+
+    /// Shows `tracks` as the library, keeping the track heard, the row under the cursor and the
+    /// album or artist opened where they are still found.
+    fn list_tracks(&mut self, tracks: Arc<[Track]>) -> Command<Msg> {
+        let heard = self.current().map(|track| track.path.clone());
+        let under = self.cursor.and_then(|at| self.list.get(at)).and_then(|row| self.tracks().get(*row));
+        let under = under.map(|track| track.path.clone());
+        let album =
+            self.album_open.and_then(|at| self.albums.get(at)).map(|album| (album.title.clone(), album.artist.clone()));
+        let artist = self.artist_open.and_then(|at| self.artists.get(at)).map(|artist| artist.name.clone());
+        self.rows = view::rows(&tracks);
+        self.places = tracks.iter().enumerate().map(|(index, track)| (track.path.clone(), index)).collect();
+        self.albums = library::albums(&tracks).into();
+        self.artists = library::artists(&tracks).into();
+        self.tracks = Some(tracks);
+        self.current = heard.and_then(|path| self.places.get(&path).copied());
+        self.album_open = album
+            .and_then(|(title, by)| self.albums.iter().position(|album| album.title == title && album.artist == by));
+        self.artist_open = artist.and_then(|name| self.artists.iter().position(|artist| artist.name == name));
+        // The playlists are known from the start, for the menu that adds a track to one.
+        self.read_playlists();
+        self.refresh_lists();
+        let row = under.and_then(|path| self.places.get(&path).copied());
+        self.cursor = row
+            .and_then(|row| self.list.iter().position(|at| *at == row))
+            .or_else(|| (!self.list.is_empty()).then_some(0));
+        if std::mem::replace(&mut self.listed, true) {
+            return Command::none();
+        }
+        let art = if self.current.is_none() && self.choices.resume { self.take_up_queue() } else { Command::none() };
+        Command::batch([Command::focus(view::TRACKS), art])
     }
 
     /// Plays the track of row `index`, with the rest of the list after it in the queue, and starts
@@ -788,19 +862,12 @@ impl Music {
     fn handle(&mut self, msg: Msg) -> Command<Msg> {
         match msg {
             Msg::Scanned(tracks) => {
-                self.rows = view::rows(&tracks);
-                self.places = tracks.iter().enumerate().map(|(index, track)| (track.path.clone(), index)).collect();
-                self.albums = library::albums(&tracks).into();
-                self.artists = library::artists(&tracks).into();
-                self.tracks = Some(tracks);
-                // The playlists are known from the start, for the menu that adds a track to one.
-                self.read_playlists();
-                self.refresh_lists();
-                self.cursor = (!self.list.is_empty()).then_some(0);
-                let art =
-                    if self.current.is_none() && self.choices.resume { self.take_up_queue() } else { Command::none() };
-                return Command::batch([Command::focus(view::TRACKS), art]);
+                self.reading = false;
+                return self.list_tracks(tracks);
             }
+            // The index is only a quick first look: once the folders themselves are read, it is late.
+            Msg::Indexed(tracks) if self.tracks.is_none() && !tracks.is_empty() => return self.list_tracks(tracks),
+            Msg::Indexed(_) => {}
             Msg::Select(at) => self.cursor = Some(at),
             Msg::Play(at) => {
                 self.cursor = Some(at);
@@ -877,7 +944,7 @@ impl App for Music {
     type Msg = Msg;
 
     fn init(&mut self) -> Command<Msg> {
-        Command::batch([self.scan(), self.ask_for_update(), self.serve_bus()])
+        Command::batch([self.read_index(), self.scan(), self.ask_for_update(), self.serve_bus()])
     }
 
     fn preferences(&self, preferences: &Preferences) -> Option<Msg> {

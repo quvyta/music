@@ -2,6 +2,13 @@
 
 Every release of quvyta-music, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.1.2 - 2026-10-04
+
+### Added
+
+- More folders in one library: the settings' new Library section adds a folder through a folder picker, takes one out again (its music stays where it is) and reads every folder again on demand. A folder whose music is already read is not added twice.
+- A start with a large library is quick: qmus keeps an index of the tags it has read (in `~/.local/state/quvyta/music/library.index`), shows the library from it at once, and opens only the files that are new or have changed since.
+
 ## 0.1.1 - 2026-10-03
 
 ### Fixed

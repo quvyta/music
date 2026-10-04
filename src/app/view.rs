@@ -99,6 +99,7 @@ impl Music {
             .footer(|ui| self.player_bar(ui, size.width))
             .show(ui);
         self.playlist_dialog(ui);
+        self.folder_picker(ui);
         if self.help_open {
             ui.add(self.help());
         }

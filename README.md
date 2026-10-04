@@ -20,10 +20,11 @@ qmus [FOLDER]
 
 - Without a folder, qmus shows your Music folder: the one your desktop names in `user-dirs.dirs`, or `~/Music`.
 - With a folder, qmus shows the music in it and every folder below it.
+- More folders can join the library from the settings (`ctrl+,`, Library): add one, take one out, or read them all again.
 - A path that is not a folder is a one-line message and exit code 2; no screen opens.
 - `qmus --version` and `qmus --help` print and leave.
 
-qmus reads your music and never changes it: it does not write to, rename, move or delete any of your files. What it keeps of its own, the queue, the moment you left it at and the volume, is in `~/.local/state/quvyta/music/`; a copy of each album cover it has shown, for the desktop's "now playing" corner, is in `~/.cache/quvyta/music/art/`, and the folder can be emptied at any time. Playlists are kept in `~/.local/share/quvyta/music/playlists/`; removing one asks first and takes only the playlist file.
+qmus reads your music and never changes it: it does not write to, rename, move or delete any of your files. What it keeps of its own, the queue, the moment you left it at, the volume and an index of the tags it has read (so a start opens only the files that are new or changed), is in `~/.local/state/quvyta/music/`; a copy of each album cover it has shown, for the desktop's "now playing" corner, is in `~/.cache/quvyta/music/art/`, and the folder can be emptied at any time. Playlists are kept in `~/.local/share/quvyta/music/playlists/`; removing one asks first and takes only the playlist file.
 
 ## Keys
 

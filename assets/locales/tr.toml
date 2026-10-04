@@ -96,6 +96,19 @@ append-done = "{name} kuyruğun sonunda"
 added = "{name}, {playlist} listesine eklendi"
 not-added = "{name} çalma listesine eklenemedi"
 
+[music.library]
+title = "Kitaplık"
+main-text = "qmus'un açıldığı klasör."
+remove = "Çıkar"
+add = "Klasör ekle"
+add-text = "İçindeki müzik kitaplığa katılır. Klasörde hiçbir şey değişmez."
+add-button = "Ekle"
+pick-title = "Kitaplığa klasör ekle"
+already = "Bu klasörün müziği zaten {folder} içinden okunuyor"
+rescan = "Klasörleri yeniden oku"
+rescan-text = "qmus açıkken eklenen ya da değişen müzik için."
+rescan-button = "Yeniden oku"
+
 [music.settings]
 title = "Ayarlar"
 not-saved = "Ayarlar kaydedilemedi"

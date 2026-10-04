@@ -96,6 +96,19 @@ append-done = "{name} is at the end of the queue"
 added = "{name} is added to {playlist}"
 not-added = "{name} could not be added to the playlist"
 
+[music.library]
+title = "Library"
+main-text = "The folder qmus opens with."
+remove = "Remove"
+add = "Add a folder"
+add-text = "Its music joins the library. Nothing in it is changed."
+add-button = "Add"
+pick-title = "Add a folder to the library"
+already = "Its music is already read from {folder}"
+rescan = "Read the folders again"
+rescan-text = "For music added or changed while qmus was open."
+rescan-button = "Read again"
+
 [music.settings]
 title = "Settings"
 not-saved = "The settings could not be saved"
