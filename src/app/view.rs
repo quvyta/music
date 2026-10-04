@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use qframe::prelude::*;
 use qframe::widgets::{
-    BigText, Column, ColumnWidth, EmptyState, HelpLayer, IconButton, Image, LevelBars, Panel, ProgressBar, Table,
+    BigText, Column, ColumnWidth, EmptyState, HelpLayer, IconButton, Image, LevelBars, Panel, SeekBar, Table,
     TableCell, TableRow,
 };
 
@@ -28,11 +28,11 @@ const SMALLEST: Size = Size { width: 24, height: 6 };
 /// The width of the progress bar in the player bar.
 const PROGRESS: u16 = 24;
 
+/// The mark of a track of an account, beside its title.
+pub(super) const ACCOUNT_ICON: &str = "category-network";
+
 /// The cells of the visualizer in the player bar; the bands are merged into them.
 const VISUALIZER: u16 = 8;
-
-/// The characters the large title is drawn with; a title with any other is written in bold.
-const BIG: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 :.%-";
 
 /// Below this width the top strip gives way and the player bar takes two rows, so the track's
 /// name and both times still fit.
@@ -47,18 +47,26 @@ const ONE_ROW: u16 = 80;
 const FULL: u16 = 100;
 
 /// The rows of `tracks`, made once when the folder is read rather than on every frame.
-pub(super) fn rows(tracks: &[Track]) -> Arc<[TableRow]> {
+pub(super) fn rows(tracks: &[Track], marked: bool, unreachable: impl Fn(&Track) -> bool) -> Arc<[TableRow]> {
     tracks
         .iter()
         .map(|track| {
             TableRow::new([
                 TableCell::new(track.number.map(|number| number.to_string()).unwrap_or_default()),
-                TableCell::new(track.title.clone()),
+                {
+                    let title = TableCell::new(track.title.clone());
+                    // Beside an account, each title says where it is from: this computer or an account.
+                    match (marked, track.location.source()) {
+                        (false, _) => title,
+                        (true, None) => title.icon("folder-music", None),
+                        (true, Some(_)) => title.icon(ACCOUNT_ICON, None),
+                    }
+                },
                 TableCell::new(track.artist.clone()),
                 TableCell::new(track.album.clone()),
                 TableCell::new(track.duration.map(clock).unwrap_or_default()),
             ])
-            .faint(!track.playable)
+            .faint(!track.playable || unreachable(track))
         })
         .collect()
 }
@@ -89,10 +97,19 @@ impl Music {
                     match self.page {
                         Page::NowPlaying => self.now_playing(ui),
                         Page::Queue => self.queue_page(ui),
-                        Page::Albums if self.album_open.is_none() => self.albums_page(ui),
-                        Page::Artists if self.artist_open.is_none() => self.artists_page(ui),
+                        Page::Tracks | Page::Albums | Page::Artists => {
+                            ui.column(|ui| {
+                                self.source_picker(ui);
+                                match self.page {
+                                    Page::Albums if self.album_open.is_none() => self.albums_page(ui),
+                                    Page::Artists if self.artist_open.is_none() => self.artists_page(ui),
+                                    _ => self.body(ui),
+                                }
+                            })
+                            .fill();
+                        }
                         Page::Playlists if self.shelf.open.is_none() => self.playlists_page(ui),
-                        Page::Tracks | Page::Albums | Page::Artists | Page::Playlists => self.body(ui),
+                        Page::Playlists => self.body(ui),
                     }
                 }
             })
@@ -100,6 +117,7 @@ impl Music {
             .show(ui);
         self.playlist_dialog(ui);
         self.folder_picker(ui);
+        self.account_dialogs(ui);
         if self.help_open {
             ui.add(self.help());
         }
@@ -163,6 +181,14 @@ impl Music {
                 ui.row(|ui| {
                     ui.add(IconButton::new("arrow-left").tooltip(t!("music.back")).on_press(Msg::Cancel)).id("back");
                     ui.add(Text::new(name).role("title").no_wrap()).fill_width();
+                    if self.page == Page::Playlists && self.shelf.open_from.is_some() {
+                        ui.add(
+                            Button::new(t!("music.playlists.copy"))
+                                .icon("music-playlist")
+                                .on_press(Msg::Lists(super::playlists::ListMsg::CopyAsk)),
+                        )
+                        .id("copy-list");
+                    }
                 })
                 .gap(1)
                 .padding(Padding::symmetric(0, 1))
@@ -187,6 +213,7 @@ impl Music {
                 .selected(self.cursor)
                 .on_select(Msg::Select)
                 .on_activate(Msg::Play)
+                .space_activates(false)
                 .context_menu(self.track_menu()),
         )
         .fill()
@@ -235,7 +262,7 @@ impl Music {
     fn cover_card(&self, ui: &mut View<'_, Msg>, across: u16, album: &str) {
         let initial = album.chars().find(|letter| !letter.is_whitespace()).and_then(|letter| {
             let upper: String = letter.to_uppercase().collect();
-            upper.chars().all(|letter| BIG.contains(letter)).then_some(upper)
+            BigText::fits(&upper).then_some(upper)
         });
         ui.add_with(Panel::new(), |ui| {
             ui.column(|ui| {
@@ -267,7 +294,7 @@ impl Music {
     fn now_playing_text(&self, ui: &mut View<'_, Msg>) {
         let Some(track) = self.current() else { return };
         ui.column(|ui| {
-            if track.title.chars().all(|letter| BIG.contains(letter)) {
+            if BigText::fits(&track.title) {
                 ui.add(BigText::new(track.title.clone()).variant("accent")).id("title");
             } else {
                 ui.add(Text::new(track.title.clone()).role("title").bold().no_wrap()).id("title");
@@ -394,7 +421,13 @@ impl Music {
         let position = self.status.position.min(total);
         ui.add(Text::new(clock(position)).role("secondary"));
         let done = if total.is_zero() { 0.0 } else { position.as_secs_f32() / total.as_secs_f32() };
-        ui.add(ProgressBar::new(done).percent(false)).width(width);
+        ui.add(
+            SeekBar::new(done)
+                .percent(false)
+                .on_seek(Msg::SeekTo)
+                .hover_label(move |fraction| clock(total.mul_f32(fraction))),
+        )
+        .width(width);
         ui.add(Text::new(clock(total)).role("secondary"));
     }
 

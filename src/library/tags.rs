@@ -46,9 +46,17 @@ fn read(path: PathBuf) -> Track {
         .and_then(|parent| parent.file_name())
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let mut track =
-        Track { title: stem, artist: String::new(), album: folder, number: None, duration: None, playable: true, path };
-    let Ok(file) = lofty::read_from_path(&track.path) else { return track };
+    let read = lofty::read_from_path(&path);
+    let mut track = Track {
+        title: stem,
+        artist: String::new(),
+        album: folder,
+        number: None,
+        duration: None,
+        playable: true,
+        location: path.into(),
+    };
+    let Ok(file) = read else { return track };
     let duration = file.properties().duration();
     track.duration = (!duration.is_zero()).then_some(duration);
     if let Some(tag) = file.primary_tag().or_else(|| file.first_tag()) {

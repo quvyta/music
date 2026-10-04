@@ -58,12 +58,25 @@ pub fn keep(track: &Path, cache: &Path, name: &str) -> Option<PathBuf> {
             (fs::read(&path).ok()?, ending)
         }
     };
+    keep_as(&bytes, &ending, cache, name)
+}
+
+/// Keeps a copy of the cover `bytes`, a picture an account sent, in `cache` under `name`, as
+/// [`keep`] keeps a file's; `None` when they are not a picture a desktop can show or cannot be
+/// written.
+#[must_use]
+pub fn keep_bytes(bytes: &[u8], cache: &Path, name: &str) -> Option<PathBuf> {
+    keep_as(bytes, ending_of(bytes)?, cache, name)
+}
+
+/// Writes `bytes` to `cache` as `name` with `ending`, unless a copy is there already.
+fn keep_as(bytes: &[u8], ending: &str, cache: &Path, name: &str) -> Option<PathBuf> {
     let kept = cache.join(format!("{name}.{ending}"));
     if kept.is_file() {
         return Some(kept);
     }
     fs::create_dir_all(cache).ok()?;
-    qframe::storage::atomic_write(&kept, &bytes).ok()?;
+    qframe::storage::atomic_write(&kept, bytes).ok()?;
     Some(kept)
 }
 

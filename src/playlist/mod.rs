@@ -6,6 +6,9 @@
 //! that is not there any more stays in the list as an item that is not present, because a
 //! playlist is what the person chose rather than a scan of what happens to exist.
 //!
+//! A track of one of the person's accounts is written as `qmus://<account>/<id>`, an address only
+//! qmus knows: another player passes the line over and plays the rest.
+//!
 //! Nothing here touches the music itself. Only list files are written, renamed and removed, and
 //! [`delete`] refuses anything that is not a playlist in the playlists folder.
 
@@ -13,11 +16,18 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use crate::library::Location;
+
 mod read;
 mod write;
 
 pub use read::read;
 pub use write::{delete, rename, replace, write};
+
+/// How a playlist line names a track of one of the person's accounts: `qmus://`, the account's
+/// key, a slash, and the id the service gives the track with its unsafe bytes percent-escaped.
+/// Another player does not know the address and passes the line over.
+const REMOTE: &str = "qmus://";
 
 /// The endings of the files qmus reads as a playlist, in either case.
 const ENDINGS: [&str; 2] = ["m3u8", "m3u"];
@@ -46,13 +56,14 @@ pub struct Playlist {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Item {
     /// Where the track is: a file, a path from the playlist's folder, or an `http(s)` address
-    /// kept as it is written.
-    pub path: PathBuf,
+    /// kept as it is written; or a track of one of the person's accounts.
+    pub location: Location,
     /// The title from `#EXTINF`, if the file gives one.
     pub title: Option<String>,
     /// The length from `#EXTINF`, if the file gives a readable one.
     pub duration: Option<Duration>,
-    /// Whether a file is there now. An `http(s)` item is never present.
+    /// Whether a file is there now. An `http(s)` item is never present; an account's track always
+    /// is, as far as the playlist knows: whether it still is is the account's to say.
     pub present: bool,
 }
 
@@ -60,7 +71,7 @@ pub struct Item {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Track {
     /// Where the track is.
-    pub path: PathBuf,
+    pub location: Location,
     /// The title to write in `#EXTINF`; none writes no title.
     pub title: Option<String>,
     /// The length to write in `#EXTINF`, in whole seconds; none writes `-1`.

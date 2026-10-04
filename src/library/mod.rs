@@ -12,17 +12,86 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-mod index;
+pub(crate) mod index;
 mod tags;
 mod walk;
 
 use index::Entry;
 
+/// The key an account of the person's is known by: made once when the account is added, never
+/// changed, so a renamed account still owns its tracks.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct SourceKey(pub String);
+
+impl std::fmt::Display for SourceKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// Where a track is played from.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Location {
+    /// A file of this computer.
+    File(PathBuf),
+    /// A track of one of the person's accounts: the account, and the id the service gives it.
+    Remote {
+        /// The account the track belongs to.
+        source: SourceKey,
+        /// The id the account's service knows the track by.
+        id: String,
+    },
+}
+
+impl Location {
+    /// The file this location is, when it is one of this computer.
+    #[must_use]
+    pub fn file(&self) -> Option<&Path> {
+        match self {
+            Self::File(path) => Some(path),
+            Self::Remote { .. } => None,
+        }
+    }
+
+    /// The account the track is of; `None` for a file of this computer.
+    #[must_use]
+    pub fn source(&self) -> Option<&SourceKey> {
+        match self {
+            Self::File(_) => None,
+            Self::Remote { source, .. } => Some(source),
+        }
+    }
+}
+
+impl From<PathBuf> for Location {
+    fn from(path: PathBuf) -> Self {
+        Self::File(path)
+    }
+}
+
+impl From<&Path> for Location {
+    fn from(path: &Path) -> Self {
+        Self::File(path.to_path_buf())
+    }
+}
+
+impl From<&PathBuf> for Location {
+    fn from(path: &PathBuf) -> Self {
+        Self::File(path.clone())
+    }
+}
+
+impl From<&Location> for Location {
+    fn from(location: &Location) -> Self {
+        location.clone()
+    }
+}
+
 /// One track of the library.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Track {
-    /// Where the file is.
-    pub path: PathBuf,
+    /// Where it is played from.
+    pub location: Location,
     /// The title from its tags, or its file name without the ending.
     pub title: String,
     /// The artist from its tags; empty when the tags name none.
@@ -37,6 +106,14 @@ pub struct Track {
     pub playable: bool,
 }
 
+impl Track {
+    /// The file the track is, when it is one of this computer.
+    #[must_use]
+    pub fn file(&self) -> Option<&Path> {
+        self.location.file()
+    }
+}
+
 /// Every track under `folder`, in the order of artist, album, number and title. Folders that
 /// cannot be read are passed over, and a folder reached twice through links is read once.
 #[must_use]
@@ -49,7 +126,7 @@ pub fn scan(folder: &Path) -> Vec<Track> {
 #[must_use]
 pub fn scan_all(sources: &[PathBuf]) -> Vec<Track> {
     let mut tracks = tags::read_all(walk::files(sources));
-    tracks.sort_by_cached_key(order_key);
+    sort(&mut tracks);
     tracks
 }
 
@@ -94,14 +171,16 @@ pub fn scan_with_index(sources: &[PathBuf], index: &Path) -> Vec<Track> {
     for (at, track) in places.into_iter().zip(tags::read_all(files)) {
         // A file that cannot be asked about its size and time is not written down, so that it is
         // read again next time rather than trusted on words.
-        if let Some(entry) = Entry::of(&track) {
-            entries.insert(track.path.clone(), entry);
+        if let Some(entry) = Entry::of(&track)
+            && let Some(file) = track.file()
+        {
+            entries.insert(file.to_path_buf(), entry);
         }
         slots[at] = Some(track);
     }
     let mut tracks: Vec<Track> = slots.into_iter().flatten().collect();
     tracks.sort_by_cached_key(order_key);
-    index::write(index, tracks.iter().filter_map(|track| entries.get(&track.path)));
+    index::write(index, tracks.iter().filter_map(|track| track.file().and_then(|file| entries.get(file))));
     tracks
 }
 
@@ -117,13 +196,21 @@ pub fn read_index(index: &Path) -> Vec<Track> {
 }
 
 /// What tracks are ordered by: names without regard to case, then the number on the album.
-fn order_key(track: &Track) -> (String, String, u32, String) {
+fn order_key(track: &Track) -> (String, String, Option<SourceKey>, u32, String) {
     (
         track.artist.to_lowercase(),
         track.album.to_lowercase(),
+        // An album of the same name on two accounts is two albums, each whole.
+        track.location.source().cloned(),
         track.number.unwrap_or(u32::MAX),
         track.title.to_lowercase(),
     )
+}
+
+/// Puts `tracks` in the library's order: by artist, album, the account the album is of, number
+/// and title.
+pub fn sort(tracks: &mut [Track]) {
+    tracks.sort_by_cached_key(order_key);
 }
 
 /// An album of the library: its tracks, in the order listed.
@@ -154,7 +241,13 @@ pub fn albums(tracks: &[Track]) -> Vec<Album> {
     let mut albums: Vec<Album> = Vec::new();
     for (row, track) in tracks.iter().enumerate() {
         match albums.last_mut() {
-            Some(album) if album.title == track.album && album.artist == track.artist => album.tracks.push(row),
+            Some(album)
+                if album.title == track.album
+                    && album.artist == track.artist
+                    && tracks[album.tracks[0]].location.source() == track.location.source() =>
+            {
+                album.tracks.push(row);
+            }
             _ => albums.push(Album { title: track.album.clone(), artist: track.artist.clone(), tracks: vec![row] }),
         }
     }
@@ -166,7 +259,10 @@ pub fn albums(tracks: &[Track]) -> Vec<Album> {
 pub fn artists(tracks: &[Track]) -> Vec<Artist> {
     let mut artists: Vec<Artist> = Vec::new();
     for (row, track) in tracks.iter().enumerate() {
-        let new_album = row == 0 || tracks[row - 1].album != track.album || tracks[row - 1].artist != track.artist;
+        let new_album = row == 0
+            || tracks[row - 1].album != track.album
+            || tracks[row - 1].artist != track.artist
+            || tracks[row - 1].location.source() != track.location.source();
         match artists.last_mut() {
             Some(artist) if artist.name == track.artist => {
                 artist.tracks.push(row);
@@ -271,7 +367,7 @@ mod tests {
             tracks
                 .iter()
                 .filter(|track| !track.playable)
-                .all(|track| track.path.extension().is_some_and(|e| e == "opus"))
+                .all(|track| track.file().and_then(Path::extension).is_some_and(|e| e == "opus"))
         );
     }
 
@@ -336,7 +432,7 @@ mod tests {
         assert_eq!(fold("İSTANBUL Işık"), "istanbul isik");
         assert_eq!(fold("Björk Señor Ça"), "bjork senor ca");
         let track = Track {
-            path: PathBuf::from("x.flac"),
+            location: PathBuf::from("x.flac").into(),
             title: "Gülpembe".to_owned(),
             artist: "Barış Manço".to_owned(),
             album: "Sahibinden İhtiyaçtan".to_owned(),

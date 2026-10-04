@@ -8,7 +8,7 @@ use symphonia::core::codecs::audio::{AudioDecoder, AudioDecoderOptions};
 use symphonia::core::errors::Error;
 use symphonia::core::formats::probe::Hint;
 use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekTo, TrackType};
-use symphonia::core::io::MediaSourceStream;
+use symphonia::core::io::{MediaSource, MediaSourceStream};
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::units::{Time, Timestamp};
 
@@ -36,10 +36,21 @@ impl Decoder {
     /// Says why when the file cannot be read, is not audio qmus can decode, or has no rate.
     pub fn open(path: &Path) -> Result<Self, String> {
         let file = File::open(path).map_err(|error| error.to_string())?;
-        let source = MediaSourceStream::new(Box::new(file), Default::default());
+        Self::open_source(Box::new(file), path.extension().and_then(|extension| extension.to_str()))
+    }
+
+    /// Opens `source`, a file or a track still arriving over the network, and its first audio
+    /// track. `ending` is the file ending the source would have, when known: it helps tell formats
+    /// apart.
+    ///
+    /// # Errors
+    ///
+    /// As [`Decoder::open`].
+    pub fn open_source(source: Box<dyn MediaSource>, ending: Option<&str>) -> Result<Self, String> {
+        let source = MediaSourceStream::new(source, Default::default());
         let mut hint = Hint::new();
-        if let Some(extension) = path.extension().and_then(|extension| extension.to_str()) {
-            hint.with_extension(extension);
+        if let Some(ending) = ending {
+            hint.with_extension(ending);
         }
         let format = symphonia::default::get_probe()
             .probe(&hint, source, FormatOptions::default(), MetadataOptions::default())

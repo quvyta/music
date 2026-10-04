@@ -13,14 +13,18 @@ use qframe::runtime::{Task, TaskId, Update, UpdateCheck};
 use qframe::storage::{Ecosystem, Preferences, Settings, UserDir, user_dir};
 use qframe::widgets::{Appearance, AppearanceChange, TableRow, Toast};
 
-use crate::audio::{AudioOut, Player, Problem, State, Status};
-use crate::library::{self, Album, Artist, Track};
+use crate::audio::stream::StreamCache;
+use crate::audio::{AudioOut, Opener, Player, Problem, State, Status, Tune};
+use crate::library::{self, Album, Artist, Location, Track};
 use crate::queue::{Queue, Repeat};
 use crate::vis::{Spectrum, WINDOW};
 
 pub use bus::Bus;
 
+mod accounts;
 mod bus;
+mod catalogue;
+mod heard;
 mod menu;
 mod pages;
 mod playlists;
@@ -41,6 +45,9 @@ const BANDS: usize = 48;
 
 /// How far a seek key moves the track.
 const SEEK: Duration = Duration::from_secs(5);
+
+/// The most the tracks heard from the accounts take in the cache before the oldest go.
+const STREAM_CACHE: u64 = 500 * 1024 * 1024;
 
 /// How much a volume key changes the volume, out of 100.
 const VOLUME_STEP: u8 = 5;
@@ -73,6 +80,13 @@ pub struct Machine {
     pub covers: Option<PathBuf>,
     /// Where the person's playlists are kept; `None` keeps none.
     pub playlists: Option<PathBuf>,
+    /// Where what each account listed is kept for the next start; `None` keeps nothing.
+    pub listings: Option<PathBuf>,
+    /// Where the tracks heard from the accounts are kept while they arrive and after; `None`
+    /// plays no account's track.
+    pub streams: Option<PathBuf>,
+    /// How Spotify is logged in to and played; `None` offers no Spotify.
+    pub spotify: Option<crate::sources::spotify::Setup>,
 }
 
 impl Machine {
@@ -88,6 +102,9 @@ impl Machine {
             bus: Bus::Session,
             covers: Ecosystem::QUVYTA.cache_dir(APP).map(|cache| cache.join("art")),
             playlists: Ecosystem::QUVYTA.data_dir(APP).map(|data| data.join("playlists")),
+            listings: Ecosystem::QUVYTA.cache_dir(APP).map(|cache| cache.join("sources")),
+            streams: Ecosystem::QUVYTA.cache_dir(APP).map(|cache| cache.join("stream")),
+            spotify: crate::sources::spotify::Setup::here(),
         }
     }
 
@@ -205,8 +222,17 @@ impl Opening {
 pub struct Music {
     machine: Machine,
     folder: PathBuf,
-    /// The tracks of the folder, once read.
+    /// The tracks of the library, once read: those of this computer and those of the accounts.
     tracks: Option<Arc<[Track]>>,
+    /// The tracks of this computer's folders, once read, from the index or the folders themselves.
+    local: Option<Arc<[Track]>>,
+    /// What each account listed, by the account's key.
+    listings: HashMap<String, Vec<Track>>,
+    /// The cover each account's track names, by where the track is played from.
+    remote_covers: HashMap<Location, String>,
+    /// The account's track heard now, and whether its start and its being heard have been
+    /// reported to its account.
+    reported: (Option<Location>, bool, bool),
     /// The table's rows, made once per reading of the folder.
     rows: Arc<[TableRow]>,
     /// The rows of the tracks the track table shows now: all of them, those the search finds, or
@@ -232,10 +258,12 @@ pub struct Music {
     queue_cursor: Option<usize>,
     /// What the search box holds.
     query: String,
+    /// Whose music the library's pages show.
+    shown: pages::Shown,
     /// Whether the side bar is open over the body on a narrow terminal.
     sidebar_open: bool,
     /// The row of each track, by its path.
-    places: HashMap<PathBuf, usize>,
+    places: HashMap<Location, usize>,
     /// What plays and in what order: the list from the row chosen on, shuffled or not.
     queue: Queue,
     /// The row the cursor is on in the track table, a place in `list`.
@@ -293,6 +321,20 @@ pub struct Music {
     listed: bool,
     /// qmus on the session bus, once it has taken its place there.
     mpris: Option<Arc<crate::mpris::Server>>,
+    /// The person's accounts, in the order added.
+    accounts: Vec<crate::accounts::Account>,
+    /// Whether the accounts file was there but could not be read, so it is not written over.
+    accounts_unreadable: bool,
+    /// The logins given in this run; never written.
+    logins: crate::accounts::Logins,
+    /// Where each account stands in this run.
+    standing: HashMap<String, accounts::Standing>,
+    /// The account dialog, while it is open.
+    account_dialog: Option<accounts::Dialog>,
+    /// The account the person is asked about removing.
+    removing: Option<String>,
+    /// How many tries of an account have been made, to tell a late answer from the latest.
+    tries: u64,
 }
 
 impl std::fmt::Debug for Music {
@@ -308,6 +350,12 @@ pub enum Msg {
     Scanned(Arc<[Track]>),
     /// The index of the last run has been read.
     Indexed(Arc<[Track]>),
+    /// What the account with this key listed the last time, read from the cache.
+    Listed(String, Vec<crate::sources::RemoteTrack>),
+    /// An account was told of a track heard.
+    Reported,
+    /// What the account with this key answered when asked for everything it has.
+    Catalogue(String, Result<Vec<crate::sources::RemoteTrack>, crate::sources::SourceError>),
     /// The cursor moved to this row.
     Select(usize),
     /// This row was chosen: its track plays.
@@ -320,6 +368,9 @@ pub enum Msg {
     Previous,
     /// The track heard moves a few seconds forward (`true`) or back.
     Seek(bool),
+    /// The track heard moves to this fraction of its length, where a press or a drag on the bar
+    /// landed.
+    SeekTo(f32),
     /// What is still to come is shuffled, or put back in the order of the list.
     Shuffle,
     /// Repeat goes round: off, the whole queue, the track heard.
@@ -344,6 +395,8 @@ pub enum Msg {
     Lists(playlists::ListMsg),
     /// A change on the settings page.
     Setting(settings::SettingMsg),
+    /// Something on the accounts part of the settings page.
+    Accounts(accounts::AccountMsg),
     /// An entry of a track's menu was chosen.
     Menu(menu::TrackMenu),
     /// An album's cover has been read.
@@ -375,10 +428,20 @@ impl Music {
         player.set_volume(volume);
         let choices = settings::Choices::of(&settings);
         let added = settings::added_folders(&settings);
+        let (accounts, accounts_unreadable) =
+            match machine.config.as_ref().map(|config| crate::accounts::load(&config.join(crate::accounts::FILE))) {
+                Some(Ok(accounts)) => (accounts, false),
+                Some(Err(_)) => (Vec::new(), true),
+                None => (Vec::new(), false),
+            };
         Self {
             machine,
             folder,
             tracks: None,
+            local: None,
+            listings: HashMap::new(),
+            remote_covers: HashMap::new(),
+            reported: (None, false, false),
             rows: Arc::from(Vec::new()),
             list: Vec::new(),
             list_rows: Arc::from(Vec::new()),
@@ -391,6 +454,7 @@ impl Music {
             group_cursor: (None, None),
             queue_cursor: None,
             query: String::new(),
+            shown: pages::Shown::default(),
             sidebar_open: false,
             places: HashMap::new(),
             queue: Queue::from(Vec::<PathBuf>::new(), 0),
@@ -424,6 +488,13 @@ impl Music {
             shelf: playlists::Shelf::default(),
             dialog: None,
             mpris: None,
+            accounts,
+            accounts_unreadable,
+            logins: crate::accounts::Logins::default(),
+            standing: HashMap::new(),
+            account_dialog: None,
+            removing: None,
+            tries: 0,
         }
     }
 
@@ -443,6 +514,11 @@ impl Music {
     /// The folders the library is read from: the one qmus opens with, then those added.
     fn sources(&self) -> Vec<PathBuf> {
         std::iter::once(self.folder.clone()).chain(self.added.iter().cloned()).collect()
+    }
+
+    /// Where the accounts are kept; `None` keeps them in memory only.
+    fn accounts_file(&self) -> Option<PathBuf> {
+        self.machine.config.as_ref().map(|config| config.join(crate::accounts::FILE))
     }
 
     /// Where the library's index is kept between runs; `None` keeps none.
@@ -509,14 +585,14 @@ impl Music {
     /// Shows `tracks` as the library, keeping the track heard, the row under the cursor and the
     /// album or artist opened where they are still found.
     fn list_tracks(&mut self, tracks: Arc<[Track]>) -> Command<Msg> {
-        let heard = self.current().map(|track| track.path.clone());
+        let heard = self.current().map(|track| track.location.clone());
         let under = self.cursor.and_then(|at| self.list.get(at)).and_then(|row| self.tracks().get(*row));
-        let under = under.map(|track| track.path.clone());
+        let under = under.map(|track| track.location.clone());
         let album =
             self.album_open.and_then(|at| self.albums.get(at)).map(|album| (album.title.clone(), album.artist.clone()));
         let artist = self.artist_open.and_then(|at| self.artists.get(at)).map(|artist| artist.name.clone());
-        self.rows = view::rows(&tracks);
-        self.places = tracks.iter().enumerate().map(|(index, track)| (track.path.clone(), index)).collect();
+        self.rows = view::rows(&tracks, !self.accounts.is_empty(), |track| self.unreachable(track));
+        self.places = tracks.iter().enumerate().map(|(index, track)| (track.location.clone(), index)).collect();
         self.albums = library::albums(&tracks).into();
         self.artists = library::artists(&tracks).into();
         self.tracks = Some(tracks);
@@ -531,7 +607,8 @@ impl Music {
         self.cursor = row
             .and_then(|row| self.list.iter().position(|at| *at == row))
             .or_else(|| (!self.list.is_empty()).then_some(0));
-        if std::mem::replace(&mut self.listed, true) {
+        // The queue of the last run is of this computer's tracks too, so it waits for them.
+        if self.local.is_none() || std::mem::replace(&mut self.listed, true) {
             return Command::none();
         }
         let art = if self.current.is_none() && self.choices.resume { self.take_up_queue() } else { Command::none() };
@@ -551,7 +628,7 @@ impl Music {
             None => ((0..self.tracks().len()).collect(), index),
         };
         let tracks = self.tracks();
-        let mut queue = Queue::from(rows.iter().map(|row| tracks[*row].path.as_path()), at);
+        let mut queue = Queue::from(rows.iter().map(|row| &tracks[*row].location), at);
         queue.set_repeat(self.queue.repeat());
         if self.queue.is_shuffled() {
             queue.set_shuffle(true, seed());
@@ -563,7 +640,7 @@ impl Music {
     /// Plays the track of row `index` as the queue has it now.
     fn play_row(&mut self, index: usize) -> Command<Msg> {
         let Some(track) = self.tracks.as_ref().and_then(|tracks| tracks.get(index)) else { return Command::none() };
-        self.player.play(track.path.clone());
+        self.player.play(self.tune(&track.location));
         self.current = Some(index);
         self.status = self.player.status();
         self.follow();
@@ -574,7 +651,8 @@ impl Music {
     /// shown already or one read lately.
     fn read_art(&mut self) -> Command<Msg> {
         let Some(track) = self.current() else { return Command::none() };
-        let folder = track.path.parent().map(Path::to_path_buf).unwrap_or_default();
+        let Some(path) = track.file().map(Path::to_path_buf) else { return self.read_remote_art() };
+        let folder = path.parent().map(Path::to_path_buf).unwrap_or_default();
         let key = (folder, track.album.clone());
         if self.art.as_ref().is_some_and(|shown| shown.key == key) {
             return Command::none();
@@ -585,7 +663,6 @@ impl Music {
             self.covers.push(kept);
             return Command::none();
         }
-        let path = track.path.clone();
         let cache = self.machine.covers.clone();
         self.art = Some(Art { key: key.clone(), read: false, image: None, file: None });
         Command::perform(move || {
@@ -608,21 +685,54 @@ impl Music {
     /// a track qmus cannot play is not followed into, the queue passes it over after a stop.
     fn follow(&self) {
         let next = self.queue.peek_next().filter(|path| self.playable_row(path).is_some());
-        self.player.follow_with(next.map(Path::to_path_buf));
+        self.player.follow_with(next.map(|next| self.tune(next)));
+    }
+
+    /// How the player reaches the sound of the track at `location`: a file where it is, an
+    /// account's track from its account, or why it cannot be reached.
+    fn tune(&self, location: &Location) -> Tune {
+        let Location::Remote { source, id } = location else { return location.clone().into() };
+        let opener = match self.stream_of(&source.0, id) {
+            Ok(opener) => opener,
+            Err(why) => Opener::Unplayable(why),
+        };
+        Tune { location: location.clone(), opener }
+    }
+
+    /// How the track `id` of the account `key` is fetched, or why it cannot be.
+    fn stream_of(&self, key: &str, id: &str) -> Result<Opener, String> {
+        let Some(account) = self.accounts.iter().find(|account| account.key == key) else {
+            return Err(t!("music.remote.gone"));
+        };
+        let Some(client) = self.logins.get(key) else {
+            return Err(t!("music.remote.login", name = account.name.as_str()));
+        };
+        if let Some(opener) = client.opener(id) {
+            return Ok(opener);
+        }
+        let Some(folder) = &self.machine.streams else { return Err(t!("music.remote.gone")) };
+        Ok(Opener::Stream {
+            cache: StreamCache::new(folder.clone(), STREAM_CACHE),
+            key: format!("{key}/{id}"),
+            address: client.stream_address(id).ok_or_else(|| t!("music.remote.gone"))?,
+            ending: None,
+        })
     }
 
     /// The player went on into the track the queue named next: the queue moves on with it.
-    fn went_on(&mut self, heard: &Path) -> Command<Msg> {
+    fn went_on(&mut self, heard: &Location) -> Command<Msg> {
         let index = match self.following() {
-            Some(index) if self.tracks()[index].path == heard => index,
+            Some(index) if self.tracks()[index].location == *heard => index,
             _ => match self.places.get(heard) {
                 Some(index) => *index,
                 None => return Command::none(),
             },
         };
+        // The track before went on into this one, so it was heard to its end.
+        let told = self.heard_through();
         self.current = Some(index);
         self.follow();
-        self.read_art()
+        Command::batch([told, self.read_art()])
     }
 
     /// Holds the track heard, or goes on with it; with nothing loaded, plays the row under the cursor.
@@ -664,7 +774,7 @@ impl Music {
     /// ends first. Each track is looked at once at most, so a queue of nothing playable ends.
     fn following(&mut self) -> Option<usize> {
         for _ in 0..=self.tracks().len() {
-            let path = self.queue.advance()?.to_path_buf();
+            let path = self.queue.advance()?.clone();
             if let Some(index) = self.playable_row(&path) {
                 return Some(index);
             }
@@ -673,7 +783,7 @@ impl Music {
     }
 
     /// The row of the track at `path`, when qmus can play it.
-    fn playable_row(&self, path: &Path) -> Option<usize> {
+    fn playable_row(&self, path: &Location) -> Option<usize> {
         let index = *self.places.get(path)?;
         self.tracks().get(index).is_some_and(|track| track.playable).then_some(index)
     }
@@ -684,7 +794,7 @@ impl Music {
         let Some(current) = self.current else { return Command::none() };
         let mut position = self.status.position;
         for _ in 0..=self.tracks().len() {
-            let Some(path) = self.queue.previous(position).map(Path::to_path_buf) else { break };
+            let Some(path) = self.queue.previous(position).cloned() else { break };
             match self.playable_row(&path) {
                 Some(index) => return self.play_row(index),
                 None if self.queue.history().next().is_some() => position = Duration::ZERO,
@@ -722,7 +832,7 @@ impl Music {
         self.queue = queue;
         self.current = Some(index);
         self.cursor = self.list.iter().position(|row| *row == index);
-        self.player.cue(self.tracks()[index].path.clone(), at);
+        self.player.cue(self.tune(&self.tracks()[index].location), at);
         self.status = self.player.status();
         self.follow();
         self.read_art()
@@ -790,13 +900,13 @@ impl Music {
             self.reads += 1;
         }
         self.status = self.player.status();
-        let current = self.current().map(|track| track.path.clone());
+        let current = self.current().map(|track| track.location.clone());
         let art = match self.status.track.clone() {
             Some(heard) if current.is_some_and(|current| current != heard) => self.went_on(&heard),
             _ => Command::none(),
         };
         let then = self.read_player_state();
-        Command::batch([art, then])
+        Command::batch([art, self.report_heard(), then])
     }
 
     /// What the state the player is in asks of the screen.
@@ -863,11 +973,18 @@ impl Music {
         match msg {
             Msg::Scanned(tracks) => {
                 self.reading = false;
-                return self.list_tracks(tracks);
+                self.local = Some(tracks);
+                return self.relist();
             }
             // The index is only a quick first look: once the folders themselves are read, it is late.
-            Msg::Indexed(tracks) if self.tracks.is_none() && !tracks.is_empty() => return self.list_tracks(tracks),
+            Msg::Indexed(tracks) if self.local.is_none() && !tracks.is_empty() => {
+                self.local = Some(tracks);
+                return self.relist();
+            }
             Msg::Indexed(_) => {}
+            Msg::Listed(key, tracks) => return self.listed(key, tracks),
+            Msg::Reported => {}
+            Msg::Catalogue(key, answer) => return self.catalogue(key, answer),
             Msg::Select(at) => self.cursor = Some(at),
             Msg::Play(at) => {
                 self.cursor = Some(at);
@@ -877,11 +994,17 @@ impl Music {
             Msg::Pages(msg) => return self.page_msg(msg),
             Msg::Lists(msg) => return self.list_msg(msg),
             Msg::Setting(msg) => return self.setting_msg(msg),
+            Msg::Accounts(msg) => return self.account_msg(msg),
             Msg::Menu(msg) => return self.menu_msg(msg),
             Msg::PlayPause => return self.play_pause(),
             Msg::Next => return self.next(),
             Msg::Previous => return self.previous(),
             Msg::Seek(forward) => self.seek(forward),
+            Msg::SeekTo(fraction) => {
+                // A track whose length is not known has no fraction to go to.
+                let Some(total) = self.current().and_then(|track| track.duration) else { return Command::none() };
+                return self.seek_to(total.mul_f32(fraction.clamp(0.0, 1.0)));
+            }
             Msg::Shuffle => self.shuffle(),
             Msg::Repeat => self.repeat(),
             Msg::Volume(louder) => {
@@ -944,7 +1067,20 @@ impl App for Music {
     type Msg = Msg;
 
     fn init(&mut self) -> Command<Msg> {
-        Command::batch([self.read_index(), self.scan(), self.ask_for_update(), self.serve_bus()])
+        // An accounts file that cannot be read is said once, and left as it is.
+        let unreadable = if self.accounts_unreadable {
+            Command::toast(Toast::warning(t!("music.accounts.unreadable")).key("accounts"))
+        } else {
+            Command::none()
+        };
+        Command::batch([
+            self.read_index(),
+            self.scan(),
+            self.read_listings(),
+            self.ask_for_update(),
+            self.serve_bus(),
+            unreadable,
+        ])
     }
 
     fn preferences(&self, preferences: &Preferences) -> Option<Msg> {

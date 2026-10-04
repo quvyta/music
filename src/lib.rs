@@ -1,6 +1,7 @@
 //! qmus: a music player for the terminal, playing your own library with gapless playback, album
 //! art and a visualizer drawn from the sound itself.
 
+pub mod accounts;
 pub mod app;
 pub mod art;
 pub mod audio;
@@ -10,6 +11,7 @@ pub mod locales;
 pub mod mpris;
 pub mod playlist;
 pub mod queue;
+pub mod sources;
 #[cfg(test)]
 pub(crate) mod testing;
 pub mod vis;

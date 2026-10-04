@@ -238,6 +238,7 @@ impl Music {
                 ui.add(Words::new(t!("music.settings.title")).role("title"));
                 SettingsList::show(ui, |list| {
                     self.library_rows(list);
+                    self.account_rows(list);
                     list.heading(t!("music.settings.playing"));
                     list.row(
                         SettingRow::new(t!("music.settings.resume")).description(t!("music.settings.resume-text")),

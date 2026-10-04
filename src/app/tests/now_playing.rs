@@ -54,20 +54,33 @@ fn alt_1_shows_the_track_heard_large_and_esc_goes_back_to_the_tracks() {
 }
 
 #[test]
-fn the_side_bar_opens_the_page_and_a_title_the_large_letters_lack_is_written() {
+fn the_side_bar_opens_the_page_and_a_turkish_title_is_drawn_large() {
     let scratch = Scratch::new("np-button");
     let folder = albums(&scratch);
-    let mut h = open_large(&scratch, &folder, 100, 30);
+    // Wide enough for the ten letters large beside the card.
+    let mut h = open_large(&scratch, &folder, 160, 30);
     h.press("down");
     h.press("enter");
     click_icon(&mut h, "music-note");
     let screen = h.screen();
-    // The player bar names it too; the page's own title is among the first rows.
+    assert!(screen.contains("Kalben · Sonsuz"), "{screen}");
+    // The player bar names it; the page draws it in half blocks, its own letters included.
+    assert!(!screen.lines().skip(1).take(6).any(|line| line.contains("Aşk İçinde")), "{screen}");
+    assert!(screen.lines().skip(1).take(6).filter(|line| line.contains('▀')).count() >= 2, "{screen}");
+}
+
+#[test]
+fn a_title_the_large_letters_lack_is_written() {
+    let scratch = Scratch::new("np-written");
+    tagged_wav(&scratch.path("music/1.wav"), 0.4, "Звезда по имени Солнце", "Кино", "Звезда", 1);
+    let mut h = open_large(&scratch, &scratch.path("music"), 100, 30);
+    h.press("enter");
+    h.press("alt+1");
+    let screen = h.screen();
     assert!(
-        screen.lines().skip(1).take(4).any(|line| line.contains("Aşk İçinde")),
+        screen.lines().skip(1).take(4).any(|line| line.contains("Звезда по имени Солнце")),
         "written in bold, not drawn with gaps:\n{screen}"
     );
-    assert!(screen.contains("Kalben · Sonsuz"), "{screen}");
 }
 
 #[test]

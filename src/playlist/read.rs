@@ -7,6 +7,7 @@ use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
 use super::{Item, Playlist, name_of};
+use crate::library::{Location, SourceKey};
 
 /// What an `#EXTINF` line says about the item that comes after it.
 #[derive(Default)]
@@ -44,6 +45,10 @@ pub fn read(path: &Path) -> io::Result<Playlist> {
         // A line that says nothing of an item is an item with no title and no length, and an
         // `#EXTINF` at the end of the file with no line after it says nothing of anything.
         let Extended { title, duration } = extended.take().unwrap_or_default();
+        if let Some(remote) = remote_of(line) {
+            items.push(Item { location: remote, title, duration, present: true });
+            continue;
+        }
         let address = is_address(line);
         let track = match line.strip_prefix("file://") {
             // A `file://` line names the same file a plain line does, only with its spaces and
@@ -55,7 +60,7 @@ pub fn read(path: &Path) -> io::Result<Playlist> {
         // Nothing is asked whether an address is there: it is never fetched, and whether it plays
         // is the player's business.
         let present = !address && track.exists();
-        items.push(Item { path: track, title, duration, present });
+        items.push(Item { location: Location::File(track), title, duration, present });
     }
     Ok(Playlist { name: name_of(path), path: path.to_path_buf(), items })
 }
@@ -89,6 +94,13 @@ fn text(path: &Path) -> io::Result<String> {
         return Err(io::Error::new(io::ErrorKind::InvalidData, reason));
     }
     Ok(failed.into_bytes().into_iter().map(char::from).collect())
+}
+
+/// The account's track a `qmus://<key>/<id>` line names, when it is one.
+fn remote_of(line: &str) -> Option<Location> {
+    let (key, id) = line.strip_prefix(super::REMOTE)?.split_once('/')?;
+    let id = percent_decoded(id);
+    (!key.is_empty() && !id.is_empty()).then(|| Location::Remote { source: SourceKey(key.to_owned()), id })
 }
 
 /// Whether a line is an address a player would fetch rather than a file on this machine.
@@ -183,13 +195,17 @@ mod tests {
         assert_eq!(
             playlist.items[0],
             Item {
-                path: here,
+                location: Location::from(here),
                 title: Some("Kalben - Sonsuz".to_owned()),
                 duration: Some(Duration::from_secs(187)),
                 present: true,
             }
         );
-        assert_eq!(playlist.items[1].path, scratch.path("music/there.wav"), "the path the library knows");
+        assert_eq!(
+            playlist.items[1].location,
+            Location::from(scratch.path("music/there.wav")),
+            "the path the library knows"
+        );
         assert_eq!(playlist.items[1].title, None);
         assert_eq!(playlist.items[1].duration, None);
     }
@@ -205,7 +221,7 @@ mod tests {
         fs::write(folder.join("Evening.m3u8"), format!("#EXTM3U\nfile://{written}\n")).expect("playlist");
         let playlist = read(&folder.join("Evening.m3u8")).expect("playlist");
         assert_eq!(playlist.items.len(), 1);
-        assert_eq!(playlist.items[0].path, song);
+        assert_eq!(playlist.items[0].location, Location::from(song));
         assert!(playlist.items[0].present);
     }
 
@@ -224,7 +240,7 @@ mod tests {
         assert_eq!(playlist.items.len(), 1);
         assert_eq!(playlist.items[0].title, Some("caf\u{e7}".to_owned()));
         assert_eq!(playlist.items[0].duration, None);
-        assert_eq!(playlist.items[0].path, song);
+        assert_eq!(playlist.items[0].location, Location::from(song));
     }
 
     #[test]
@@ -246,11 +262,11 @@ mod tests {
         fs::write(folder.join("Radio.m3u8"), text).expect("playlist");
         let playlist = read(&folder.join("Radio.m3u8")).expect("playlist");
         assert_eq!(playlist.items.len(), 2);
-        assert_eq!(playlist.items[0].path, PathBuf::from("https://stream.example/live.mp3"));
+        assert_eq!(playlist.items[0].location, Location::from(PathBuf::from("https://stream.example/live.mp3")));
         assert_eq!(playlist.items[0].title, Some("Radio".to_owned()));
         assert_eq!(playlist.items[0].duration, Some(Duration::from_secs(210)));
         assert!(!playlist.items[0].present);
-        assert_eq!(playlist.items[1].path, PathBuf::from("http://other.example/one.mp3"));
+        assert_eq!(playlist.items[1].location, Location::from(PathBuf::from("http://other.example/one.mp3")));
         assert_eq!(playlist.items[1].title, None);
         assert_eq!(playlist.items[1].duration, None);
         assert!(!playlist.items[1].present);
@@ -266,7 +282,7 @@ mod tests {
         fs::write(folder.join("Evening.m3u8"), text).expect("playlist");
         let playlist = read(&folder.join("Evening.m3u8")).expect("playlist");
         assert_eq!(playlist.items.len(), 1);
-        assert_eq!(playlist.items[0].path, gone);
+        assert_eq!(playlist.items[0].location, Location::from(gone));
         assert_eq!(playlist.items[0].title, Some("Gone".to_owned()));
         assert!(!playlist.items[0].present);
     }

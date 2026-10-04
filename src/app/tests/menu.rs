@@ -5,7 +5,7 @@ use qframe::event::{MouseButton, MouseKind};
 use super::*;
 
 /// Right-clicks the row of the track called `title`.
-fn menu_of(h: &mut Harness<Music>, title: &str) {
+pub(super) fn menu_of(h: &mut Harness<Music>, title: &str) {
     let (x, y) = find(h, title).unwrap_or_else(|| panic!("no {title} row:\n{}", h.screen()));
     h.mouse(MouseKind::Down(MouseButton::Right), x, y);
     h.mouse(MouseKind::Up(MouseButton::Right), x, y);
@@ -13,7 +13,7 @@ fn menu_of(h: &mut Harness<Music>, title: &str) {
 }
 
 /// Clicks the entry `label` of the menu open: the last place it shows, over the rows.
-fn choose(h: &mut Harness<Music>, label: &str) {
+pub(super) fn choose(h: &mut Harness<Music>, label: &str) {
     let screen = h.screen();
     let (row, line) = screen.lines().enumerate().filter(|(_, line)| line.contains(label)).last().expect("the entry");
     let column = line[..line.find(label).expect("the entry")].chars().count();
@@ -30,7 +30,7 @@ fn play_next_puts_the_track_right_after_the_one_heard() {
     settle(&mut h);
     menu_of(&mut h, "Haydi Söyle");
     choose(&mut h, "Play next");
-    let upcoming: Vec<_> = h.app().queue.upcoming().map(Path::to_path_buf).collect();
+    let upcoming: Vec<_> = h.app().queue.upcoming().filter_map(|track| track.file()).map(Path::to_path_buf).collect();
     assert_eq!(upcoming.get(1), Some(&scratch.path("music/sonsuz/2.wav")), "{upcoming:?}");
     assert!(h.screen().contains("Haydi Söyle plays next"), "{}", h.screen());
 }

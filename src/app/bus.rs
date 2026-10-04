@@ -12,6 +12,7 @@ use qframe::widgets::Toast;
 
 use super::{Msg, Music};
 use crate::audio::State;
+use crate::library::Location;
 use crate::mpris::{Loop, Now, Playback, Request, Server};
 use crate::queue::Repeat;
 
@@ -124,7 +125,7 @@ impl Music {
     /// Plays the file at `path` when it is one of the tracks shown; qmus plays its own library and
     /// says so of anything else.
     fn open_file(&mut self, path: &Path) -> Command<Msg> {
-        match self.places.get(path).copied() {
+        match self.places.get(&Location::from(path)).copied() {
             Some(index) => self.play(index),
             None => Command::toast(
                 Toast::warning(t!("music.bus.elsewhere.title"))
@@ -135,7 +136,7 @@ impl Music {
     }
 
     /// Moves the track heard to `at`, and tells the bus it jumped.
-    fn seek_to(&mut self, at: Duration) -> Command<Msg> {
+    pub(super) fn seek_to(&mut self, at: Duration) -> Command<Msg> {
         if !matches!(self.status.state, State::Playing | State::Paused) {
             return Command::none();
         }
@@ -195,7 +196,8 @@ impl Music {
             track_number: track.number,
             length: track.duration,
             art: self.art.as_ref().and_then(|art| art.file.clone()),
-            path: Some(track.path.clone()),
+            // Only a file is named: an account's address would carry its login.
+            path: track.file().map(Path::to_path_buf),
             can_next: self.queue.peek_next().is_some(),
             can_previous: true,
             ..shared

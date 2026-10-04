@@ -2,6 +2,26 @@
 
 Every release of quvyta-music, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.2.0 - 2026-10-04
+
+### Added
+
+- A music server of your own (Navidrome, Gonic, Airsonic and others that speak the Subsonic API) joins the library: add it in the settings' new Accounts section with a password or an API key, and its tracks, albums and artists are listed beside your files. The password is held only while qmus is open and never written anywhere.
+- A Jellyfin server of your own joins the library through Jellyfin's own API: add it in the settings' Accounts section with your user name and password. The password is sent once to log in, and only the session the server gives is kept, in memory, while qmus is open. Its tracks are listed, played, shown with their covers and listed in its playlists like a Subsonic server's, and the plays heard are reported unless "Report plays" is off.
+- Not built by default yet (`cargo install quvyta-music --features spotify`): a Spotify Premium account joins the library through librespot, an unofficial Spotify client: log in with your browser from the settings, and your liked songs and playlists are listed beside your files and played by qmus itself, the visualizer and gapless play included. An account that is not Premium is turned away, and the session is held only while qmus is open.
+- What a server listed is kept for the next start and shown at once, before any login; a server that cannot list keeps its tracks on screen, faint, with the reason on its account.
+- A picker over the tracks, albums and artists shows every source, this computer's music, or one server's; each title is marked with where it is from, and a search lists the computer's tracks first and counts what each source finds.
+- A server's tracks play as they arrive, one following the next with no gap, and are kept in qmus's own cache (held to 500 MB) for the next time. A track the server will not send, or one of an account that needs its password, is passed over with the reason.
+- A server's album covers are shown and kept for the desktop's "now playing" corner, and the server is told the tracks heard for its own play counts, unless "Report plays" is turned off for the account.
+- The server's playlists are on the playlists page, in their own order, and "Copy to a qmus playlist" makes one of yours from one. Your playlists can hold a server's tracks too, written as `qmus://` lines another player passes over.
+- "Find on another source" in a track's menu searches the other sources for it by artist and title; nothing is chosen or played for you.
+- The bar under the track is a seek bar: a press or a drag on it moves the track there, and the pointer resting on it names the time it stands for.
+- A title in Turkish or a Western European language, such as "Aşk İçinde" or "Café Müller", is drawn large on the now-playing page, and so is an album's first letter on its card.
+
+### Changed
+
+- Space plays and holds the music while a list has the keyboard too; Enter still plays the row under the cursor.
+
 ## 0.1.2 - 2026-10-04
 
 ### Added

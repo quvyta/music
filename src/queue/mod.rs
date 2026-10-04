@@ -1,14 +1,14 @@
 //! The play queue: the track heard now, the tracks that follow it, and the tracks heard before.
 //!
-//! The queue is a model of its own. It names tracks by their path and answers what plays next, so
-//! the engine can open the next track early for a change that is not heard and the screen can
-//! draw the queue, and neither of them decides anything about the order.
+//! The queue is a model of its own. It names tracks by where they are played from and answers
+//! what plays next, so the engine can open the next track early for a change that is not heard and
+//! the screen can draw the queue, and neither of them decides anything about the order.
 //!
 //! The order the tracks were given in is kept apart from the order they play in. That is what lets
 //! shuffling rearrange only what is still to come, and what lets turning it off put the tracks
 //! back the way they came without the track being heard moving.
 
-use std::path::{Path, PathBuf};
+use crate::library::Location;
 use std::time::Duration;
 
 mod memory;
@@ -33,7 +33,7 @@ pub enum Repeat {
 pub struct Queue {
     /// The tracks the queue holds, in the order they were given. Shuffling never touches this, so
     /// turning shuffle off finds the order again.
-    order: Vec<PathBuf>,
+    order: Vec<Location>,
     /// The place in `order` of each track, in the order they play. A permutation of `order`: the
     /// queue holds every track exactly once, however it is arranged.
     play: Vec<usize>,
@@ -42,7 +42,7 @@ pub struct Queue {
     cursor: usize,
     /// A track that has left the queue but is still being heard. The queue has already moved on to
     /// the track that plays next, and this one is reported until the engine asks for that next one.
-    still_playing: Option<PathBuf>,
+    still_playing: Option<Location>,
     /// Whether the tracks after the one heard are in a shuffled order.
     shuffled: bool,
     /// What happens when the last track has been heard.
@@ -62,8 +62,8 @@ impl Queue {
     /// A queue of `tracks` that plays from the one at `start` to the end of the list. A `start`
     /// past the last track names no track, so the whole list plays.
     #[must_use]
-    pub fn from(tracks: impl IntoIterator<Item = impl AsRef<Path>>, start: usize) -> Self {
-        let order: Vec<PathBuf> = tracks.into_iter().map(|track| track.as_ref().to_path_buf()).collect();
+    pub fn from(tracks: impl IntoIterator<Item = impl Into<Location>>, start: usize) -> Self {
+        let order: Vec<Location> = tracks.into_iter().map(Into::into).collect();
         let start = if start < order.len() { start } else { 0 };
         let play: Vec<usize> = (start..order.len()).collect();
         Self { order, play, cursor: 0, still_playing: None, shuffled: false, repeat: Repeat::Off }
@@ -71,21 +71,21 @@ impl Queue {
 
     /// The track heard now, or `None` when the queue has come to its end and nothing plays.
     #[must_use]
-    pub fn current(&self) -> Option<&Path> {
-        self.still_playing.as_deref().or_else(|| self.at(self.cursor))
+    pub fn current(&self) -> Option<&Location> {
+        self.still_playing.as_ref().or_else(|| self.at(self.cursor))
     }
 
     /// The queue as it is shown: the track heard now first, then the ones that follow it in the
     /// order they will play. An empty queue shows nothing.
-    pub fn upcoming(&self) -> impl Iterator<Item = &Path> {
-        let after = self.play.iter().skip(self.cursor).map(|&held| self.order[held].as_path());
-        self.still_playing.iter().map(PathBuf::as_path).chain(after)
+    pub fn upcoming(&self) -> impl Iterator<Item = &Location> {
+        let after = self.play.iter().skip(self.cursor).map(|&held| &self.order[held]);
+        self.still_playing.iter().chain(after)
     }
 
     /// The tracks already heard, oldest first, and nothing at all when the queue has only just
     /// been made.
-    pub fn history(&self) -> impl Iterator<Item = &Path> {
-        self.play.iter().take(self.cursor).map(|&held| self.order[held].as_path())
+    pub fn history(&self) -> impl Iterator<Item = &Location> {
+        self.play.iter().take(self.cursor).map(|&held| &self.order[held])
     }
 
     /// Whether the tracks after the one heard are in a shuffled order.
@@ -107,7 +107,7 @@ impl Queue {
 
     /// The track that plays once the one heard has been heard, and the queue moves to it. `None`
     /// when the list ends and nothing plays then, in which case the queue stays where it is.
-    pub fn advance(&mut self) -> Option<&Path> {
+    pub fn advance(&mut self) -> Option<&Location> {
         let step = self.step();
         // A track that has left the queue is heard until the engine asks what plays next, and the
         // asking forgets it whether or not anything plays next.
@@ -127,7 +127,7 @@ impl Queue {
     /// The track [`Queue::advance`] would hand over, said without moving the queue: the engine opens
     /// it a while before it is wanted so that the change from one to the next is not heard.
     #[must_use]
-    pub fn peek_next(&self) -> Option<&Path> {
+    pub fn peek_next(&self) -> Option<&Location> {
         match self.step()? {
             Step::Stay => self.current(),
             Step::Move(place) => self.at(place),
@@ -137,7 +137,7 @@ impl Queue {
     /// The track to play when the person asks for the one before the one heard: a track heard for
     /// three seconds or more starts again, one heard for less takes the queue back a track, and one
     /// heard for less with nothing before it starts again.
-    pub fn previous(&mut self, position: Duration) -> Option<&Path> {
+    pub fn previous(&mut self, position: Duration) -> Option<&Location> {
         if position < RESTART_AFTER && self.cursor > 0 {
             // A track that has already left the queue is the one heard while the queue has moved
             // on, so letting go of it and going back a track together land on the track before it.
@@ -162,7 +162,7 @@ impl Queue {
 
     /// Puts tracks in the queue so that they play right after the one heard, before the tracks
     /// that were already waiting.
-    pub fn play_next(&mut self, tracks: impl IntoIterator<Item = impl AsRef<Path>>) -> bool {
+    pub fn play_next(&mut self, tracks: impl IntoIterator<Item = impl Into<Location>>) -> bool {
         let added = self.add(tracks);
         if added == 0 {
             return false;
@@ -176,7 +176,7 @@ impl Queue {
     }
 
     /// Puts tracks at the end of the queue, to play after everything already waiting in it.
-    pub fn append(&mut self, tracks: impl IntoIterator<Item = impl AsRef<Path>>) -> bool {
+    pub fn append(&mut self, tracks: impl IntoIterator<Item = impl Into<Location>>) -> bool {
         let added = self.add(tracks);
         if added == 0 {
             return false;
@@ -237,8 +237,8 @@ impl Queue {
     }
 
     /// The track at the given place of the play order.
-    fn at(&self, place: usize) -> Option<&Path> {
-        self.play.get(place).map(|&held| self.order[held].as_path())
+    fn at(&self, place: usize) -> Option<&Location> {
+        self.play.get(place).map(|&held| &self.order[held])
     }
 
     /// Where the play order stands when the next call to [`Queue::advance`] arrives, said without
@@ -274,9 +274,9 @@ impl Queue {
 
     /// Puts the tracks at the end of the list and says how many there were. They join the queue at
     /// their own places, so nothing already waiting moves.
-    fn add(&mut self, tracks: impl IntoIterator<Item = impl AsRef<Path>>) -> usize {
+    fn add(&mut self, tracks: impl IntoIterator<Item = impl Into<Location>>) -> usize {
         let before = self.order.len();
-        self.order.extend(tracks.into_iter().map(|track| track.as_ref().to_path_buf()));
+        self.order.extend(tracks.into_iter().map(Into::into));
         self.order.len() - before
     }
 

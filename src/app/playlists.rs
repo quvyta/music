@@ -1,6 +1,7 @@
 //! The playlists page: the person's playlists, the tracks of the one opened, the queue kept as a
 //! new playlist, and a playlist removed once the person has said so.
 
+use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
 
@@ -10,8 +11,9 @@ use qframe::widgets::{
 };
 
 use super::{Msg, Music, Page};
-use crate::library;
+use crate::library::{self, Location, SourceKey};
 use crate::playlist::{self, Entry};
+use crate::sources::{RemotePlaylist, RemoteTrack, SourceError};
 
 /// The table of the playlists.
 pub(super) const PLAYLISTS: &str = "playlists";
@@ -41,6 +43,12 @@ pub enum ListMsg {
     Remove,
     /// The dialog closes with nothing done.
     Close,
+    /// What the account with this key said its playlists are.
+    Listed(String, Result<Vec<RemotePlaylist>, SourceError>),
+    /// What the account with this key said the tracks of its playlist with this id and name are.
+    Fetched(String, String, Result<Vec<RemoteTrack>, SourceError>),
+    /// The dialog that copies the account's playlist opened into one of qmus's opens.
+    CopyAsk,
 }
 
 /// A dialog of the playlists page.
@@ -50,6 +58,9 @@ pub(super) enum Dialog {
     Save { name: String, problem: Option<String> },
     /// Asking whether to remove this playlist.
     Remove(Entry),
+    /// Copying the account's playlist opened into one of qmus's: the name typed, and why it cannot
+    /// be used when it cannot.
+    Copy { name: String, problem: Option<String> },
 }
 
 /// The person's playlists as the page lists them: each with how many tracks it names.
@@ -63,9 +74,52 @@ pub(super) struct Shelf {
     pub(super) cursor: Option<usize>,
     /// The playlist opened, with its tracks.
     pub(super) open: Option<playlist::Playlist>,
+    /// The account the playlist opened is of; `None` for one of qmus's own.
+    pub(super) open_from: Option<String>,
+    /// The playlists each account keeps, by the account's key.
+    pub(super) remote: HashMap<String, Vec<RemotePlaylist>>,
+}
+
+/// A playlist as the page lists it: one of qmus's own, or one an account keeps.
+enum Shelved<'a> {
+    /// A playlist file of qmus's, with how many tracks it names.
+    Own(&'a Entry, usize),
+    /// A playlist the account with this key and name keeps.
+    Account { key: &'a str, name: &'a str, list: &'a RemotePlaylist },
+}
+
+impl Shelved<'_> {
+    /// The playlist's name, which the search looks in.
+    fn name(&self) -> &str {
+        match self {
+            Self::Own(entry, _) => &entry.name,
+            Self::Account { list, .. } => &list.name,
+        }
+    }
 }
 
 impl Music {
+    /// Asks each account logged in to for the playlists it keeps, off the drawing thread.
+    pub(super) fn ask_playlists(&self) -> Command<Msg> {
+        let asked = self.accounts.iter().filter_map(|account| {
+            let client = self.client_of(&account.key)?;
+            let key = account.key.clone();
+            Some(Command::perform(move || Msg::Lists(ListMsg::Listed(key, client.playlists()))))
+        });
+        Command::batch(asked)
+    }
+
+    /// The playlists the page lists, in its order: qmus's own, then each account's in the order
+    /// the accounts were added, each with its account's key and name.
+    fn shelved(&self) -> Vec<Shelved<'_>> {
+        let own = self.shelf.all.iter().map(|(entry, count)| Shelved::Own(entry, *count));
+        let remote = self.accounts.iter().flat_map(|account| {
+            let lists = self.shelf.remote.get(&account.key).map(Vec::as_slice).unwrap_or_default();
+            lists.iter().map(move |list| Shelved::Account { key: &account.key, name: &account.name, list })
+        });
+        own.chain(remote).collect()
+    }
+
     /// Reads the playlists folder again.
     pub(super) fn read_playlists(&mut self) {
         let Some(folder) = &self.machine.playlists else { return };
@@ -80,13 +134,20 @@ impl Music {
 
     /// Narrows the playlists to those the search finds, keeping the cursor within them.
     pub(super) fn refresh_shelf(&mut self) {
+        let shelved = self.shelved();
         let shown: Vec<usize> =
-            (0..self.shelf.all.len()).filter(|at| library::found(&self.shelf.all[*at].0.name, &self.query)).collect();
+            (0..shelved.len()).filter(|at| library::found(shelved[*at].name(), &self.query)).collect();
         let rows = shown
             .iter()
-            .map(|at| {
-                let (entry, count) = &self.shelf.all[*at];
-                TableRow::new([TableCell::new(entry.name.clone()), TableCell::new(count.to_string())])
+            .map(|at| match &shelved[*at] {
+                Shelved::Own(entry, count) => {
+                    TableRow::new([TableCell::new(entry.name.clone()), TableCell::new(count.to_string())])
+                }
+                // The account's own playlists say whose they are.
+                Shelved::Account { name, list, .. } => TableRow::new([
+                    TableCell::new(format!("{} · {name}", list.name)).icon(super::view::ACCOUNT_ICON, None),
+                    TableCell::new(list.tracks.to_string()),
+                ]),
             })
             .collect();
         self.shelf.cursor = match self.shelf.cursor {
@@ -100,7 +161,7 @@ impl Music {
     /// The rows of the tracks of the playlist opened that are in the folder shown, in its order.
     pub(super) fn playlist_rows(&self) -> Vec<usize> {
         let Some(open) = &self.shelf.open else { return Vec::new() };
-        open.items.iter().filter_map(|item| self.places.get(&item.path).copied()).collect()
+        open.items.iter().filter_map(|item| self.places.get(&item.location).copied()).collect()
     }
 
     /// The name the opened playlist is shown under, with how many of its tracks are elsewhere.
@@ -120,10 +181,22 @@ impl Music {
             ListMsg::Select(at) => self.shelf.cursor = Some(at),
             ListMsg::Open(at) => {
                 self.shelf.cursor = Some(at);
-                let entry = self.shelf.shown.0.get(at).and_then(|at| self.shelf.all.get(*at)).map(|(entry, _)| entry);
+                let Some(place) = self.shelf.shown.0.get(at).copied() else { return Command::none() };
+                if let Some(Shelved::Account { key, list, .. }) = self.shelved().get(place) {
+                    let (key, id, name) = ((*key).to_owned(), list.id.clone(), list.name.clone());
+                    let Some(client) = self.client_of(&key) else { return Command::none() };
+                    return Command::perform(move || {
+                        let tracks = client.playlist(&id);
+                        Msg::Lists(ListMsg::Fetched(key, name, tracks))
+                    });
+                }
+                let entry = self.shelf.all.get(place).map(|(entry, _)| entry);
                 let Some(entry) = entry else { return Command::none() };
                 match playlist::read(&entry.path) {
-                    Ok(open) => self.shelf.open = Some(open),
+                    Ok(open) => {
+                        self.shelf.open = Some(open);
+                        self.shelf.open_from = None;
+                    }
                     Err(error) => {
                         return Command::toast(
                             Toast::danger(t!("music.playlists.unreadable", name = entry.name.as_str()))
@@ -144,23 +217,126 @@ impl Music {
                 return Command::focus(NAME);
             }
             ListMsg::Typed(typed) => {
-                if let Some(Dialog::Save { name, problem }) = &mut self.dialog {
+                if let Some(Dialog::Save { name, problem } | Dialog::Copy { name, problem }) = &mut self.dialog {
                     *name = typed;
                     *problem = None;
                 }
             }
+            ListMsg::Save if matches!(self.dialog, Some(Dialog::Copy { .. })) => return self.copy_open_list(),
             ListMsg::Save => return self.save_queue(),
             ListMsg::RemoveAsk => {
+                // Only qmus's own playlists are removed here; an account's are the account's.
                 let entry =
-                    self.shelf.cursor.and_then(|at| self.shelf.shown.0.get(at)).map(|at| &self.shelf.all[*at].0);
+                    self.shelf.cursor.and_then(|at| self.shelf.shown.0.get(at)).and_then(|at| self.shelf.all.get(*at));
+                let entry = entry.map(|(entry, _)| entry);
                 if let Some(entry) = entry {
                     self.dialog = Some(Dialog::Remove(entry.clone()));
                 }
             }
             ListMsg::Remove => return self.remove_playlist(),
             ListMsg::Close => self.dialog = None,
+            ListMsg::Listed(key, answer) => {
+                // An account that cannot list its playlists keeps those it listed before.
+                if let Ok(lists) = answer {
+                    self.shelf.remote.insert(key, lists);
+                    self.refresh_shelf();
+                }
+            }
+            ListMsg::Fetched(key, name, answer) => return self.open_account_list(key, name, answer),
+            ListMsg::CopyAsk => {
+                let Some(open) = self.shelf.open.as_ref().filter(|_| self.shelf.open_from.is_some()) else {
+                    return Command::none();
+                };
+                self.dialog = Some(Dialog::Copy { name: open.name.clone(), problem: None });
+                return Command::focus(NAME);
+            }
         }
         Command::none()
+    }
+
+    /// Opens the account `key`'s playlist `name`, with the tracks it said the playlist holds.
+    fn open_account_list(
+        &mut self,
+        key: String,
+        name: String,
+        answer: Result<Vec<RemoteTrack>, SourceError>,
+    ) -> Command<Msg> {
+        let tracks = match answer {
+            Ok(tracks) => tracks,
+            Err(error) => {
+                return Command::toast(
+                    Toast::danger(t!("music.playlists.unreadable", name = name.as_str()))
+                        .body(super::accounts::words(&error))
+                        .key("playlist"),
+                );
+            }
+        };
+        let items = tracks
+            .into_iter()
+            .map(|track| playlist::Item {
+                title: Some(if track.artist.is_empty() {
+                    track.title.clone()
+                } else {
+                    format!("{} - {}", track.artist, track.title)
+                }),
+                duration: track.duration,
+                location: Location::Remote { source: SourceKey(key.clone()), id: track.id },
+                present: true,
+            })
+            .collect();
+        self.shelf.open = Some(playlist::Playlist { name, path: std::path::PathBuf::new(), items });
+        self.shelf.open_from = Some(key);
+        self.cursor = None;
+        self.show_page(Page::Playlists)
+    }
+
+    /// Writes the account's playlist opened as a new playlist of qmus's under the name typed; a
+    /// name already taken is said, and nothing is written over.
+    fn copy_open_list(&mut self) -> Command<Msg> {
+        let (Some(Dialog::Copy { name, .. }), Some(folder), Some(open)) =
+            (&self.dialog, &self.machine.playlists, &self.shelf.open)
+        else {
+            return Command::none();
+        };
+        let items: Vec<playlist::Track> = open
+            .items
+            .iter()
+            .map(|item| playlist::Track {
+                location: item.location.clone(),
+                title: item.title.clone(),
+                duration: item.duration,
+            })
+            .collect();
+        let written = playlist::write(folder, name, &items);
+        self.kept_as(written)
+    }
+
+    /// What became of writing a playlist: said in a toast, or in the dialog when it was not written.
+    fn kept_as(&mut self, written: io::Result<std::path::PathBuf>) -> Command<Msg> {
+        match written {
+            Ok(path) => {
+                let saved = path.file_stem().map(|stem| stem.to_string_lossy().into_owned()).unwrap_or_default();
+                let copied = matches!(self.dialog, Some(Dialog::Copy { .. }));
+                self.dialog = None;
+                self.read_playlists();
+                self.refresh_shelf();
+                let said = if copied { "music.playlists.copied" } else { "music.playlists.saved" };
+                Command::toast(Toast::success(t!(said, name = saved.as_str())).key("playlist"))
+            }
+            Err(error) => {
+                let problem = match error.kind() {
+                    io::ErrorKind::AlreadyExists => t!("music.playlists.taken"),
+                    io::ErrorKind::InvalidInput => t!("music.playlists.unnamed"),
+                    _ => error.to_string(),
+                };
+                if let Some(Dialog::Save { problem: shown, .. } | Dialog::Copy { problem: shown, .. }) =
+                    &mut self.dialog
+                {
+                    *shown = Some(problem);
+                }
+                Command::none()
+            }
+        }
     }
 
     /// Keeps the queue, from the track heard on, as a playlist under the name typed.
@@ -174,7 +350,7 @@ impl Music {
             .map(|path| {
                 let track = self.places.get(path).and_then(|row| self.tracks().get(*row));
                 playlist::Track {
-                    path: path.to_path_buf(),
+                    location: path.clone(),
                     title: track.map(|track| {
                         if track.artist.is_empty() {
                             track.title.clone()
@@ -186,26 +362,8 @@ impl Music {
                 }
             })
             .collect();
-        match playlist::write(folder, name, &items) {
-            Ok(path) => {
-                let saved = path.file_stem().map(|stem| stem.to_string_lossy().into_owned()).unwrap_or_default();
-                self.dialog = None;
-                self.read_playlists();
-                self.refresh_shelf();
-                Command::toast(Toast::success(t!("music.playlists.saved", name = saved.as_str())).key("playlist"))
-            }
-            Err(error) => {
-                let problem = match error.kind() {
-                    io::ErrorKind::AlreadyExists => t!("music.playlists.taken"),
-                    io::ErrorKind::InvalidInput => t!("music.playlists.unnamed"),
-                    _ => error.to_string(),
-                };
-                if let Some(Dialog::Save { problem: shown, .. }) = &mut self.dialog {
-                    *shown = Some(problem);
-                }
-                Command::none()
-            }
-        }
+        let written = playlist::write(folder, name, &items);
+        self.kept_as(written)
     }
 
     /// Removes the playlist the person said yes to: its file only, never the music it lists.
@@ -228,7 +386,7 @@ impl Music {
 
     /// The playlists page: every playlist the search finds.
     pub(super) fn playlists_page(&self, ui: &mut View<'_, Msg>) {
-        if self.shelf.all.is_empty() {
+        if self.shelf.all.is_empty() && self.shelf.remote.values().all(Vec::is_empty) {
             ui.add(
                 EmptyState::new(t!("music.playlists.none"))
                     .icon("music-playlist")
@@ -250,7 +408,8 @@ impl Music {
             Table::new(columns, Arc::clone(&self.shelf.shown.1))
                 .selected(self.shelf.cursor)
                 .on_select(|at| Msg::Lists(ListMsg::Select(at)))
-                .on_activate(|at| Msg::Lists(ListMsg::Open(at))),
+                .on_activate(|at| Msg::Lists(ListMsg::Open(at)))
+                .space_activates(false),
         )
         .fill()
         .id(PLAYLISTS);
@@ -260,9 +419,14 @@ impl Music {
     pub(super) fn playlist_dialog(&self, ui: &mut View<'_, Msg>) {
         match &self.dialog {
             None => {}
-            Some(Dialog::Save { name, problem }) => {
+            Some(dialog @ (Dialog::Save { name, problem } | Dialog::Copy { name, problem })) => {
+                let title = if matches!(dialog, Dialog::Copy { .. }) {
+                    t!("music.playlists.copy")
+                } else {
+                    t!("music.playlists.save")
+                };
                 let modal = Modal::new()
-                    .title(t!("music.playlists.save"))
+                    .title(title)
                     .width(DIALOG)
                     .on_close(Msg::Lists(ListMsg::Close))
                     .action(Button::new(t!("music.playlists.cancel")).on_press(Msg::Lists(ListMsg::Close)))

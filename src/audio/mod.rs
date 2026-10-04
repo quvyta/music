@@ -8,6 +8,7 @@
 mod convert;
 mod decode;
 mod output;
+pub mod stream;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
@@ -22,6 +23,9 @@ use convert::Converter;
 pub use decode::Decoder;
 pub use output::{AudioOut, SCOPE};
 use output::{Meter, Output};
+use stream::StreamCache;
+
+use crate::library::Location;
 
 /// How long the ring between the decoder and the output lasts.
 const RING: Duration = Duration::from_millis(500);
@@ -53,11 +57,101 @@ pub enum Problem {
     Output(String),
 }
 
+/// How the sound of a track is reached.
+#[derive(Clone)]
+pub enum Opener {
+    /// A file of this computer.
+    File(PathBuf),
+    /// A track fetched over the network into qmus's cache as it is heard.
+    Stream {
+        /// The cache it is fetched into.
+        cache: StreamCache,
+        /// The name the cache knows it by.
+        key: String,
+        /// Where it is fetched from. It carries the login, so it is never shown or said.
+        address: String,
+        /// The file ending the track would have, when known: it helps tell formats apart.
+        ending: Option<String>,
+    },
+    /// A Spotify track, its sound through librespot.
+    Spotify {
+        /// What gives the sound.
+        audio: crate::sources::spotify::audio::Audio,
+        /// The track's Spotify id.
+        id: String,
+    },
+    /// Nothing can be opened, and why.
+    Unplayable(String),
+}
+
+impl std::fmt::Debug for Opener {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::File(path) => f.debug_tuple("File").field(path).finish(),
+            // The address is left out: it carries the login.
+            Self::Stream { key, ending, .. } => {
+                f.debug_struct("Stream").field("key", key).field("ending", ending).finish_non_exhaustive()
+            }
+            Self::Spotify { id, .. } => f.debug_struct("Spotify").field("id", id).finish_non_exhaustive(),
+            Self::Unplayable(why) => f.debug_tuple("Unplayable").field(why).finish(),
+        }
+    }
+}
+
+impl Opener {
+    /// The decoder of the track, or why it cannot be had.
+    fn open(&self) -> Result<Decoder, String> {
+        match self {
+            Self::File(path) => Decoder::open(path),
+            Self::Stream { cache, key, address, ending } => {
+                Decoder::open_source(cache.open(key, address)?, ending.as_deref())
+            }
+            // Spotify's files are Ogg Vorbis.
+            Self::Spotify { audio, id } => Decoder::open_source(audio.open(id)?, Some("ogg")),
+            Self::Unplayable(why) => Err(why.clone()),
+        }
+    }
+}
+
+/// A track as the player takes it: where it is played from, which the status names, and how its
+/// sound is reached.
+#[derive(Debug, Clone)]
+pub struct Tune {
+    /// Where it is played from.
+    pub location: Location,
+    /// How its sound is reached.
+    pub opener: Opener,
+}
+
+impl From<Location> for Tune {
+    /// A file is opened where it is; a track of an account needs the account to say how, so on
+    /// its own it cannot be played.
+    fn from(location: Location) -> Self {
+        let opener = match &location {
+            Location::File(path) => Opener::File(path.clone()),
+            Location::Remote { .. } => Opener::Unplayable("this source cannot be played yet".to_owned()),
+        };
+        Self { location, opener }
+    }
+}
+
+impl From<PathBuf> for Tune {
+    fn from(path: PathBuf) -> Self {
+        Location::File(path).into()
+    }
+}
+
+impl From<&Path> for Tune {
+    fn from(path: &Path) -> Self {
+        path.to_path_buf().into()
+    }
+}
+
 /// What the screen reads from the player.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Status {
     /// The track loaded, while one is.
-    pub track: Option<PathBuf>,
+    pub track: Option<Location>,
     /// Where the player stands.
     pub state: State,
     /// How far into the track the sound has got.
@@ -69,16 +163,16 @@ pub struct Status {
 /// What the screen asks of the player. Each track asked for carries its own number, so the
 /// player never mistakes the end of the track before for the end of the one just chosen.
 enum Order {
-    Play(PathBuf, u64),
+    Play(Tune, u64),
     Seek(Duration, u64),
-    Follow(Option<PathBuf>, u64),
+    Follow(Option<Tune>, u64),
     Quit,
 }
 
 /// The part of the status the player's thread writes.
 #[derive(Default)]
 struct Loaded {
-    track: Option<PathBuf>,
+    track: Option<Location>,
     /// The number of the track last asked for.
     generation: u64,
     state: State,
@@ -130,8 +224,9 @@ impl Player {
         Self { orders, shared: Arc::new(Shared::default()), thread: None }
     }
 
-    /// Plays the file at `path` from its start, in place of whatever played.
-    pub fn play(&self, path: PathBuf) {
+    /// Plays the track at `path` from its start, in place of whatever played.
+    pub fn play(&self, path: impl Into<Tune>) {
+        let path = path.into();
         #[cfg(test)]
         self.shared.plays.fetch_add(1, Ordering::Relaxed);
         // What went wrong belongs to the track loaded; a new track starts clean, and heard: a
@@ -139,7 +234,7 @@ impl Player {
         let generation = {
             let mut loaded = self.shared.loaded();
             loaded.generation += 1;
-            loaded.track = Some(path.clone());
+            loaded.track = Some(path.location.clone());
             loaded.state = State::Playing;
             loaded.problem = None;
             loaded.cued_at = Duration::ZERO;
@@ -158,18 +253,19 @@ impl Player {
     /// Names the track to go on with once the one loaded ends, or none. When its rate is the same,
     /// its first sample follows the last of this one with nothing between; the status names it
     /// from the moment it is heard.
-    pub fn follow_with(&self, path: Option<PathBuf>) {
+    pub fn follow_with(&self, path: Option<Tune>) {
         let generation = self.shared.loaded().generation;
         let _ = self.orders.send(Order::Follow(path, generation));
     }
 
-    /// Loads the file at `path` held at `at`, as a track left off where it was: nothing is heard
+    /// Loads the track at `path` held at `at`, as a track left off where it was: nothing is heard
     /// until [`resume`](Self::resume).
-    pub fn cue(&self, path: PathBuf, at: Duration) {
+    pub fn cue(&self, path: impl Into<Tune>, at: Duration) {
+        let path = path.into();
         let generation = {
             let mut loaded = self.shared.loaded();
             loaded.generation += 1;
-            loaded.track = Some(path.clone());
+            loaded.track = Some(path.location.clone());
             loaded.state = State::Paused;
             loaded.problem = None;
             loaded.rate = 0;
@@ -279,7 +375,7 @@ struct Playing {
     /// Frames put into the ring, counted the way the output counts what it took.
     pushed: u64,
     /// The track whose samples follow in the ring, and the frame it begins at.
-    chained: Option<(PathBuf, u64)>,
+    chained: Option<(Location, u64)>,
     /// Whether the screen named another track to follow after this one was chained: the chained
     /// samples are thrown away unheard at the boundary, and the one named goes on instead.
     refollow: bool,
@@ -310,7 +406,7 @@ struct Engine {
     /// The number of the track this thread loaded last.
     generation: u64,
     /// The track to go on with once the one loaded ends.
-    following: Option<PathBuf>,
+    following: Option<Tune>,
 }
 
 impl Engine {
@@ -362,14 +458,14 @@ impl Engine {
     }
 
     /// Opens `path` and an output at its rate, as track number `generation`.
-    fn load(&mut self, path: &Path, generation: u64) {
+    fn load(&mut self, path: &Tune, generation: u64) {
         // The old output stops before the new one opens, so two tracks are never heard at once.
         self.playing = None;
         self.generation = generation;
         self.following = None;
         let meter = &self.shared.meter;
         meter.take_lost();
-        let opened = Decoder::open(path).map_err(Problem::Track).and_then(|decoder| {
+        let opened = path.opener.open().map_err(Problem::Track).and_then(|decoder| {
             let rate = decoder.rate();
             let samples = (u64::from(rate) * 2 * RING.as_millis() as u64 / 1000) as usize;
             let (ring, taken) = RingBuffer::new(samples.max(2));
@@ -444,11 +540,11 @@ impl Engine {
 
     /// Takes `path` as the track to go on with. One already chained into the ring stays only
     /// while it is still the one named; otherwise it is dropped at the boundary.
-    fn follow(&mut self, path: Option<PathBuf>) {
+    fn follow(&mut self, path: Option<Tune>) {
         if let Some(playing) = &mut self.playing
             && let Some((chained, _)) = &playing.chained
         {
-            playing.refollow = path.as_ref() != Some(chained);
+            playing.refollow = path.as_ref().map(|tune| &tune.location) != Some(chained);
             if !playing.refollow {
                 // The one named is already on its way; naming it again must not chain it twice.
                 self.following = None;
@@ -514,12 +610,12 @@ impl Engine {
                     && playing.chained.is_none()
                     && !playing.failed
                     && let Some(path) = self.following.take()
-                    && let Ok(next) = Decoder::open(&path)
+                    && let Ok(next) = path.opener.open()
                     && let Some(convert) = conversion(next.rate(), playing.rate)
                 {
                     playing.decoder = Some(next);
                     playing.convert = convert;
-                    playing.chained = Some((path, playing.pushed));
+                    playing.chained = Some((path.location, playing.pushed));
                 }
                 let Some(decoder) = &mut playing.decoder else { break };
                 let decoded = match &mut playing.convert {
@@ -580,6 +676,8 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
+    use crate::library::SourceKey;
+    use crate::testing::server::{FakeServer, Response};
     use crate::testing::{Scratch, sine_wav};
 
     /// Long enough for any of these short tracks to be heard on a loaded machine.
@@ -607,7 +705,7 @@ mod tests {
         player.play(path.clone());
         let status = wait_for(&player, |status| status.state == State::Ended);
         assert!(started.elapsed() >= Duration::from_millis(250), "0.3 s of sound took {:?}", started.elapsed());
-        assert_eq!(status.track, Some(path));
+        assert_eq!(status.track, Some(Location::from(path)));
         assert_eq!(status.position, Duration::from_millis(300), "every frame was heard");
     }
 
@@ -708,21 +806,25 @@ mod tests {
         sine_wav(&wanted, 8_000, 1, 0.4, 660.0);
         let player = Player::start(AudioOut::Null);
         player.play(first);
-        player.follow_with(Some(unwanted.clone()));
+        player.follow_with(Some(unwanted.clone().into()));
         // The first track fits the ring whole, so the unwanted one is chained into it at once.
         std::thread::sleep(Duration::from_millis(100));
-        player.follow_with(Some(wanted.clone()));
+        player.follow_with(Some(wanted.clone().into()));
         let start = Instant::now();
         let status = loop {
             let status = player.status();
-            assert_ne!(status.track.as_ref(), Some(&unwanted), "the track no longer wanted is never heard");
+            assert_ne!(
+                status.track.as_ref().and_then(Location::file),
+                Some(unwanted.as_path()),
+                "the track no longer wanted is never heard"
+            );
             if status.state == State::Ended {
                 break status;
             }
             assert!(start.elapsed() < GENEROUS, "the tracks never ended: {status:?}");
             std::thread::sleep(Duration::from_millis(1));
         };
-        assert_eq!(status.track, Some(wanted), "the one named last went on");
+        assert_eq!(status.track, Some(Location::from(wanted)), "the one named last went on");
         assert_eq!(status.position, Duration::from_millis(400), "heard whole, from its start: {status:?}");
     }
 
@@ -734,21 +836,21 @@ mod tests {
         sine_wav(&second, 8_000, 1, 0.5, 660.0);
         let player = Player::start(AudioOut::Null);
         player.play(first.clone());
-        player.follow_with(Some(second.clone()));
+        player.follow_with(Some(second.clone().into()));
         let start = Instant::now();
         loop {
             let status = player.status();
             assert_eq!(status.state, State::Playing, "the sound never stops between the two: {status:?}");
-            if status.track.as_ref() == Some(&second) {
+            if status.track.as_ref().and_then(Location::file) == Some(second.as_path()) {
                 assert!(status.position < Duration::from_millis(300), "counted from the second's start: {status:?}");
                 break;
             }
-            assert_eq!(status.track.as_ref(), Some(&first));
+            assert_eq!(status.track.as_ref().and_then(Location::file), Some(first.as_path()));
             assert!(start.elapsed() < GENEROUS, "the second track never came: {status:?}");
             std::thread::sleep(Duration::from_millis(1));
         }
         let status = wait_for(&player, |status| status.state == State::Ended);
-        assert_eq!(status.track, Some(second), "the second is the one that ended");
+        assert_eq!(status.track, Some(Location::from(second)), "the second is the one that ended");
     }
 
     #[test]
@@ -759,19 +861,19 @@ mod tests {
         sine_wav(&second, 16_000, 1, 0.5, 660.0);
         let player = Player::start(AudioOut::Null);
         player.play(first.clone());
-        player.follow_with(Some(second.clone()));
+        player.follow_with(Some(second.clone().into()));
         let start = Instant::now();
         loop {
             let status = player.status();
             assert_eq!(status.state, State::Playing, "the sound never stops between the two: {status:?}");
-            if status.track.as_ref() == Some(&second) {
+            if status.track.as_ref().and_then(Location::file) == Some(second.as_path()) {
                 break;
             }
             assert!(start.elapsed() < GENEROUS, "the second track never came: {status:?}");
             std::thread::sleep(Duration::from_millis(1));
         }
         let status = wait_for(&player, |status| status.state == State::Ended);
-        assert_eq!(status.track, Some(second), "the second is the one that ended");
+        assert_eq!(status.track, Some(Location::from(second)), "the second is the one that ended");
         // Heard at the first track's rate, the second still lasts its own half second.
         assert_eq!(status.position, Duration::from_millis(500), "{status:?}");
     }
@@ -799,7 +901,7 @@ mod tests {
         wait_for(&player, |status| status.position >= Duration::from_millis(500));
         player.play(second.clone());
         let status = player.status();
-        assert_eq!(status.track, Some(second));
+        assert_eq!(status.track, Some(Location::from(second)));
         assert!(status.position < Duration::from_millis(500), "the second track starts over: {status:?}");
     }
 
@@ -827,7 +929,7 @@ mod tests {
         assert_eq!(player.status().state, State::Playing, "the track just chosen has not ended");
         assert!(engine.step(engine.inbox.try_recv().ok()));
         let status = player.status();
-        assert_eq!((status.track, status.state), (Some(second), State::Playing));
+        assert_eq!((status.track, status.state), (Some(Location::from(second)), State::Playing));
     }
 
     #[test]
@@ -840,5 +942,126 @@ mod tests {
         let status = wait_for(&player, |status| status.problem.is_some());
         assert_eq!(status.state, State::Stopped);
         assert!(matches!(status.problem, Some(Problem::Output(_))), "the device is to blame: {status:?}");
+    }
+
+    #[test]
+    fn an_accounts_track_is_said_to_be_unplayable_and_a_file_after_it_plays() {
+        let scratch = Scratch::new("player-remote");
+        let path = scratch.path("tone.wav");
+        sine_wav(&path, 8_000, 1, 0.3, 440.0);
+        let player = Player::start(AudioOut::Null);
+        player.play(Location::Remote { source: SourceKey("navidrome-3f9a".into()), id: "tr-17".into() });
+        let status = wait_for(&player, |status| status.problem.is_some());
+        assert_eq!(status.problem, Some(Problem::Track("this source cannot be played yet".to_owned())));
+        player.play(path.clone());
+        let status = wait_for(&player, |status| status.state == State::Ended);
+        assert_eq!((status.track, status.problem), (Some(Location::from(path)), None));
+    }
+
+    /// A server sending the tone of `seconds` at `hz` for every track asked of it, shaped by `shape`.
+    fn tone_server(scratch: &Scratch, seconds: f64, shape: fn(Response) -> Response) -> FakeServer {
+        let path = scratch.path("served.wav");
+        sine_wav(&path, 8_000, 1, seconds, 440.0);
+        let bytes = std::fs::read(path).expect("the tone");
+        FakeServer::start(move |_| shape(Response::bytes(bytes.clone()).header("Content-Type", "audio/wav")))
+    }
+
+    /// The track `id` of a server's account, fetched from `server` into `cache`.
+    fn streamed(server: &FakeServer, cache: &StreamCache, id: &str) -> Tune {
+        Tune {
+            location: Location::Remote { source: SourceKey("navidrome-3f9a".into()), id: id.into() },
+            opener: Opener::Stream {
+                cache: cache.clone(),
+                key: format!("navidrome-3f9a/{id}"),
+                address: format!("{}/rest/stream?id={id}&p=secret", server.url()),
+                ending: Some("wav".to_owned()),
+            },
+        }
+    }
+
+    #[test]
+    fn a_track_from_the_network_is_heard_whole_and_its_status_names_where_it_is_from() {
+        let scratch = Scratch::new("player-stream");
+        let server =
+            tone_server(&scratch, 0.5, |answer| Response { piece: Some((1_024, Duration::from_millis(2))), ..answer });
+        let cache = StreamCache::new(scratch.path("cache"), 1 << 30);
+        let player = Player::start(AudioOut::Null);
+        let tune = streamed(&server, &cache, "tr-1");
+        player.play(tune.clone());
+        let status = wait_for(&player, |status| status.state == State::Ended);
+        assert_eq!(status.track, Some(tune.location));
+        assert_eq!(status.problem, None);
+        assert_eq!(status.position, Duration::from_millis(500), "every frame was heard: {status:?}");
+    }
+
+    #[test]
+    fn two_tracks_from_the_network_follow_each_other_with_no_stop_between() {
+        let scratch = Scratch::new("player-stream-gapless");
+        let server = tone_server(&scratch, 0.5, |answer| answer);
+        let cache = StreamCache::new(scratch.path("cache"), 1 << 30);
+        let player = Player::start(AudioOut::Null);
+        let (first, second) = (streamed(&server, &cache, "tr-1"), streamed(&server, &cache, "tr-2"));
+        player.play(first.clone());
+        player.follow_with(Some(second.clone()));
+        let start = Instant::now();
+        loop {
+            let status = player.status();
+            assert_eq!(status.state, State::Playing, "the sound never stops between the two: {status:?}");
+            if status.track.as_ref() == Some(&second.location) {
+                break;
+            }
+            assert_eq!(status.track.as_ref(), Some(&first.location));
+            assert!(start.elapsed() < GENEROUS, "the second track never came: {status:?}");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        let status = wait_for(&player, |status| status.state == State::Ended);
+        assert_eq!(status.track, Some(second.location), "the second is the one that ended");
+        assert_eq!(player.plays(), 1, "the second followed in the same sound");
+    }
+
+    #[test]
+    fn a_track_whose_server_goes_away_is_said_to_be_unplayable_without_its_address() {
+        let scratch = Scratch::new("player-stream-cut");
+        let server = tone_server(&scratch, 0.5, |answer| Response { cut_at: Some(2_000), ..answer });
+        let cache = StreamCache::new(scratch.path("cache"), 1 << 30).patience(Duration::from_secs(2));
+        let player = Player::start(AudioOut::Null);
+        let tune = streamed(&server, &cache, "tr-1");
+        assert!(!format!("{tune:?}").contains("secret"), "the address is not printed: {tune:?}");
+        player.play(tune);
+        let status = wait_for(&player, |status| status.problem.is_some());
+        let Some(Problem::Track(why)) = status.problem else { panic!("a track's problem: {status:?}") };
+        assert!(!why.contains("secret") && !why.contains("127.0.0.1"), "the address is never said: {why}");
+    }
+
+    /// A stand-in for librespot that gives the tone at `path` for every track.
+    struct Tone(std::path::PathBuf);
+
+    impl crate::sources::spotify::audio::SpotifyAudio for Tone {
+        fn open(&self, id: &str) -> Result<Box<dyn symphonia::core::io::MediaSource>, String> {
+            if id == "missing" {
+                return Err("this track cannot be played here on Spotify".to_owned());
+            }
+            Ok(Box::new(std::fs::File::open(&self.0).map_err(|error| error.to_string())?))
+        }
+    }
+
+    #[test]
+    fn a_spotify_track_is_heard_from_what_gives_its_sound_and_one_it_cannot_give_is_said() {
+        let scratch = Scratch::new("player-spotify");
+        let path = scratch.path("tone.wav");
+        sine_wav(&path, 8_000, 1, 0.4, 440.0);
+        let audio: crate::sources::spotify::audio::Audio = std::sync::Arc::new(Tone(path));
+        let tune = |id: &str| Tune {
+            location: Location::Remote { source: SourceKey("spotify-1".into()), id: id.into() },
+            opener: Opener::Spotify { audio: std::sync::Arc::clone(&audio), id: id.into() },
+        };
+        let player = Player::start(AudioOut::Null);
+        player.play(tune("missing"));
+        let status = wait_for(&player, |status| status.problem.is_some());
+        assert_eq!(status.problem, Some(Problem::Track("this track cannot be played here on Spotify".to_owned())));
+        player.play(tune("4uLU6hMCjMI75M1A2tKUQC"));
+        let status = wait_for(&player, |status| status.state == State::Ended);
+        assert_eq!(status.position, Duration::from_millis(400), "heard whole: {status:?}");
+        assert_eq!(status.problem, None);
     }
 }

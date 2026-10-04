@@ -60,8 +60,9 @@ impl Entry {
     /// The entry for `track` together with what the file on disk says about itself, or `None` when
     /// the file cannot be asked about or its path cannot be written down as text.
     pub(crate) fn of(track: &Track) -> Option<Self> {
-        let path = track.path.to_str()?;
-        let meta = fs::metadata(&track.path).ok()?;
+        let file = track.file()?;
+        let path = file.to_str()?;
+        let meta = fs::metadata(file).ok()?;
         Some(Self {
             path: path.to_owned(),
             title: track.title.clone(),
@@ -89,7 +90,7 @@ impl Entry {
     /// The track this entry describes, named by the file it was read from.
     pub(crate) fn to_track(&self) -> Track {
         Track {
-            path: PathBuf::from(&self.path),
+            location: PathBuf::from(&self.path).into(),
             title: self.title.clone(),
             artist: self.artist.clone(),
             album: self.album.clone(),
@@ -191,7 +192,7 @@ pub(crate) fn write<'a>(path: &Path, entries: impl IntoIterator<Item = &'a Entry
 
 /// `text` with what a line cannot carry written out: a tab would be read as the field beside it and
 /// a newline as the line after it, and a backslash as the start of either.
-fn escape(text: &str) -> String {
+pub(crate) fn escape(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for letter in text.chars() {
         match letter {
@@ -206,7 +207,7 @@ fn escape(text: &str) -> String {
 }
 
 /// What [`escape`] wrote, read back as it was.
-fn unescape(text: &str) -> String {
+pub(crate) fn unescape(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut letters = text.chars();
     while let Some(letter) = letters.next() {
@@ -239,7 +240,7 @@ mod tests {
         let path = scratch.path(relative);
         sine_wav(&path, 8_000, 1, 0.1, 440.0);
         Track {
-            path,
+            location: path.into(),
             title: "Gülpembe\tve ikinci satır\nburada".to_owned(),
             artist: "Barış Manço".to_owned(),
             album: "Sahibinden İhtiyaçtan".to_owned(),
@@ -259,7 +260,11 @@ mod tests {
         let entry = Entry::of(&track).expect("entry");
         write(&index, [&entry]);
         assert_eq!(read(&index), [entry], "every field of the entry survives the round trip");
-        assert_eq!(read(&index)[0].path(), track.path, "a path with spaces and letters outside ASCII stays itself");
+        assert_eq!(
+            Some(read(&index)[0].path()),
+            track.file(),
+            "a path with spaces and letters outside ASCII stays itself"
+        );
         assert_eq!(read(&index)[0].to_track(), track, "and the track is the one that went in");
     }
 
@@ -271,7 +276,7 @@ mod tests {
         let track = track_of(&scratch, "müzik/bir\\tek ve\ttab\nsatır.wav");
         let index = scratch.path("cache/library.index");
         write(&index, std::slice::from_ref(&Entry::of(&track).expect("entry")));
-        assert_eq!(read(&index).first().map(Entry::path), Some(track.path.as_path()));
+        assert_eq!(read(&index).first().map(Entry::path), track.file());
     }
 
     #[test]
@@ -280,7 +285,7 @@ mod tests {
         let path = scratch.path("music/acik.wav");
         sine_wav(&path, 8_000, 1, 0.1, 440.0);
         let track = Track {
-            path,
+            location: path.into(),
             title: "Açık".to_owned(),
             artist: String::new(),
             album: "music".to_owned(),

@@ -9,6 +9,8 @@ use std::fs;
 use std::io;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
+
+use crate::library::{Location, SourceKey};
 use std::time::Duration;
 
 use qframe::storage::atomic_write;
@@ -31,9 +33,9 @@ struct Written {
     /// The place in the play order of the track heard.
     cursor: usize,
     /// A track that had left the queue but was still being heard.
-    still_playing: Option<PathBuf>,
+    still_playing: Option<Location>,
     /// The tracks, in the order they were given.
-    order: Vec<PathBuf>,
+    order: Vec<Location>,
     /// The place of each track of the list in the order they play.
     play: Vec<usize>,
     /// How far the track heard has got.
@@ -75,14 +77,16 @@ impl Queue {
         line(&mut text, if self.shuffled { "shuffle on" } else { "shuffle off" });
         line(&mut text, format!("position {} {}", position.as_secs(), position.subsec_nanos()));
         line(&mut text, format!("at {}", self.cursor));
-        if let Some(track) = &self.still_playing {
+        if let Some(named) = self.still_playing.as_ref().and_then(written) {
             let mut with_path = b"still ".to_vec();
-            with_path.extend_from_slice(track.as_os_str().as_bytes());
+            with_path.extend_from_slice(&named);
             line(&mut text, with_path);
         }
         line(&mut text, format!("order {}", self.order.len()));
         for track in &self.order {
-            line(&mut text, track.as_os_str().as_bytes());
+            // A track that cannot be written takes an empty line: it names no file, so reading the
+            // queue back drops it the way it drops a file that has gone, and the places stay right.
+            line(&mut text, written(track).unwrap_or_default());
         }
         let mut play = b"play".to_vec();
         for place in &self.play {
@@ -171,11 +175,11 @@ impl Written {
                 return None;
             }
         }
-        let still_playing = still_playing.filter(|held| held.exists());
+        let still_playing = still_playing.filter(present);
         let mut kept = Vec::new();
         let mut place_of = vec![None; order.len()];
         for (was, held) in order.into_iter().enumerate() {
-            if held.exists() {
+            if present(&held) {
                 place_of[was] = Some(kept.len());
                 kept.push(held);
             }
@@ -224,9 +228,43 @@ fn without_carriage_return(line: &[u8]) -> &[u8] {
     line.strip_suffix(b"\r").unwrap_or(line)
 }
 
-/// The track a line of the file names.
-fn track(bytes: &[u8]) -> PathBuf {
-    PathBuf::from(std::ffi::OsStr::from_bytes(bytes))
+/// The word a line starts with when it names a track of an account rather than a file.
+const REMOTE: &[u8] = b"remote\t";
+
+/// The line naming `track`: a file's path as it is, or an account's track as `remote`, its
+/// account's key and its id, set apart by tabs. Nothing for an account's track whose key or id
+/// holds a tab or a line's end, which the line could not carry.
+fn written(track: &Location) -> Option<Vec<u8>> {
+    match track {
+        Location::File(path) => Some(path.as_os_str().as_bytes().to_vec()),
+        Location::Remote { source, id } => {
+            let plain = |text: &str| !text.contains(['\t', '\n', '\r']);
+            (plain(&source.0) && plain(id)).then(|| [REMOTE, source.0.as_bytes(), b"\t", id.as_bytes()].concat())
+        }
+    }
+}
+
+/// The track a line of the file names: an account's track when the line says so and holds
+/// exactly its three fields, a file's path otherwise.
+fn track(bytes: &[u8]) -> Location {
+    if bytes.starts_with(REMOTE) {
+        let fields: Vec<&[u8]> = bytes.split(|byte| *byte == b'\t').collect();
+        if let [_, source, id] = fields.as_slice()
+            && let (Ok(source), Ok(id)) = (std::str::from_utf8(source), std::str::from_utf8(id))
+        {
+            return Location::Remote { source: SourceKey(source.to_owned()), id: id.to_owned() };
+        }
+    }
+    Location::File(PathBuf::from(std::ffi::OsStr::from_bytes(bytes)))
+}
+
+/// Whether a track read back is still there to play: a file that has gone is not, and whether an
+/// account's track still exists is for its account to say, so it is kept.
+fn present(track: &Location) -> bool {
+    match track {
+        Location::File(path) => !path.as_os_str().is_empty() && path.exists(),
+        Location::Remote { .. } => true,
+    }
 }
 
 /// The number a setting of the file gives.

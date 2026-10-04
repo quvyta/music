@@ -6,6 +6,7 @@ use std::io;
 use std::path::{Component, Path, PathBuf};
 
 use super::{Track, is_playlist};
+use crate::library::Location;
 
 /// The ending every playlist qmus writes has: `.m3u8` says its paths and its titles are UTF-8.
 const ENDING: &str = "m3u8";
@@ -120,10 +121,32 @@ fn content(folder: &Path, items: &[Track]) -> String {
             let seconds = item.duration.and_then(|length| i64::try_from(length.as_secs()).ok()).unwrap_or(-1);
             text.push_str(&format!("#EXTINF:{seconds},{}\n", item.title.as_deref().unwrap_or_default()));
         }
-        text.push_str(&location(folder, &item.path));
+        text.push_str(&line_of(folder, &item.location));
         text.push('\n');
     }
     text
+}
+
+/// What an item's line names: a file's path, or an account's track as `qmus://<key>/<id>`.
+fn line_of(folder: &Path, track: &Location) -> String {
+    match track {
+        Location::File(path) => location(folder, path),
+        Location::Remote { source, id } => format!("{}{}/{}", super::REMOTE, source.0, escaped(id)),
+    }
+}
+
+/// `id` with every byte but letters, digits and `-._~` written as a percent escape, so a slash, a
+/// space or a line's end in it cannot change what the line says.
+fn escaped(id: &str) -> String {
+    id.bytes()
+        .map(|byte| {
+            if byte.is_ascii_alphanumeric() || b"-._~".contains(&byte) {
+                char::from(byte).to_string()
+            } else {
+                format!("%{byte:02X}")
+            }
+        })
+        .collect()
 }
 
 /// The path written on an item's line: from the playlist's folder where the track and the folder
@@ -173,8 +196,12 @@ mod tests {
         sine_wav(&two, 8_000, 1, 0.1, 440.0);
         let folder = scratch.path("playlists");
         let items = [
-            Track { path: one, title: Some("Kalben - Sonsuz".to_owned()), duration: Some(Duration::from_secs(187)) },
-            Track { path: two, title: Some("Sade".to_owned()), duration: None },
+            Track {
+                location: Location::from(one),
+                title: Some("Kalben - Sonsuz".to_owned()),
+                duration: Some(Duration::from_secs(187)),
+            },
+            Track { location: Location::from(two), title: Some("Sade".to_owned()), duration: None },
         ];
         let path = write(&folder, "Evening", &items).expect("playlist");
         assert_eq!(path, folder.join("Evening.m3u8"));
@@ -187,11 +214,11 @@ mod tests {
         assert_eq!(playlist.name, "Evening");
         assert_eq!(playlist.path, path);
         assert_eq!(playlist.items.len(), 2);
-        assert_eq!(playlist.items[0].path, scratch.path("music/one.wav"), "the path written in");
+        assert_eq!(playlist.items[0].location, Location::from(scratch.path("music/one.wav")), "the path written in");
         assert_eq!(playlist.items[0].title, Some("Kalben - Sonsuz".to_owned()));
         assert_eq!(playlist.items[0].duration, Some(Duration::from_secs(187)));
         assert!(playlist.items[0].present);
-        assert_eq!(playlist.items[1].path, scratch.path("music/two.wav"));
+        assert_eq!(playlist.items[1].location, Location::from(scratch.path("music/two.wav")));
         assert_eq!(playlist.items[1].title, Some("Sade".to_owned()));
         assert_eq!(playlist.items[1].duration, None);
         assert!(playlist.items[1].present);
@@ -207,10 +234,14 @@ mod tests {
             path
         });
         let items = [
-            Track { path: items[0].clone(), title: Some("Both".to_owned()), duration: Some(Duration::from_secs(187)) },
-            Track { path: items[1].clone(), title: Some("Title alone".to_owned()), duration: None },
-            Track { path: items[2].clone(), title: None, duration: Some(Duration::from_secs(95)) },
-            Track { path: items[3].clone(), title: None, duration: None },
+            Track {
+                location: Location::from(items[0].clone()),
+                title: Some("Both".to_owned()),
+                duration: Some(Duration::from_secs(187)),
+            },
+            Track { location: Location::from(items[1].clone()), title: Some("Title alone".to_owned()), duration: None },
+            Track { location: Location::from(items[2].clone()), title: None, duration: Some(Duration::from_secs(95)) },
+            Track { location: Location::from(items[3].clone()), title: None, duration: None },
         ];
         let path = write(&folder, "Every", &items).expect("playlist");
         let written = fs::read_to_string(&path).expect("text");
@@ -235,12 +266,13 @@ mod tests {
     fn a_track_on_another_tree_is_written_with_its_whole_path() {
         let scratch = Scratch::new("write-absolute");
         let folder = scratch.path("playlists");
-        let items = [Track { path: PathBuf::from("/mnt/sother/song.wav"), title: None, duration: None }];
+        let items =
+            [Track { location: Location::from(PathBuf::from("/mnt/sother/song.wav")), title: None, duration: None }];
         let path = write(&folder, "Far", &items).expect("playlist");
         let written = fs::read_to_string(&path).expect("text");
         assert_eq!(written, "#EXTM3U\n/mnt/sother/song.wav\n");
         let playlist = read(&path).expect("playlist");
-        assert_eq!(playlist.items[0].path, PathBuf::from("/mnt/sother/song.wav"));
+        assert_eq!(playlist.items[0].location, Location::from(PathBuf::from("/mnt/sother/song.wav")));
         assert!(!playlist.items[0].present);
     }
 
@@ -250,7 +282,7 @@ mod tests {
         let folder = scratch.path("playlists");
         let song = scratch.path("music/song.wav");
         sine_wav(&song, 8_000, 1, 0.1, 440.0);
-        let items = [Track { path: song, title: None, duration: None }];
+        let items = [Track { location: Location::from(song), title: None, duration: None }];
         let path = write(&folder, "Evening", &[]).expect("playlist");
         let kept = fs::read(&path).expect("bytes");
         assert_eq!(kept, b"#EXTM3U\n");
@@ -293,7 +325,7 @@ mod tests {
         let folder = scratch.path("playlists");
         let song = scratch.path("music/song.wav");
         sine_wav(&song, 8_000, 1, 0.1, 440.0);
-        let items = [Track { path: song, title: Some("Sade".to_owned()), duration: None }];
+        let items = [Track { location: Location::from(song), title: Some("Sade".to_owned()), duration: None }];
         let path = write(&folder, "Evening", &items).expect("playlist");
         let kept = fs::read(&path).expect("bytes");
         let morning = write(&folder, "Morning", &[]).expect("playlist");
@@ -349,7 +381,7 @@ mod tests {
         let song = scratch.path("playlists/song.wav");
         sine_wav(&song, 8_000, 1, 0.1, 440.0);
         let kept = fs::read(&song).expect("bytes");
-        let items = [Track { path: song.clone(), title: None, duration: None }];
+        let items = [Track { location: Location::from(song.clone()), title: None, duration: None }];
         let evening = write(&folder, "Evening", &items).expect("playlist");
         let morning = write(&folder, "Morning", &items).expect("playlist");
         delete(&folder, &evening).expect("deleted");
@@ -371,5 +403,32 @@ mod tests {
         names.sort();
         assert_eq!(names, ["Evening.m3u8"]);
         assert_eq!(list(&folder).len(), 1);
+    }
+
+    #[test]
+    fn an_accounts_track_is_written_as_an_address_of_qmus_and_reads_back_as_itself() {
+        let scratch = Scratch::new("playlist-remote");
+        let song = scratch.path("music/song.wav");
+        sine_wav(&song, 8_000, 1, 0.1, 440.0);
+        let folder = scratch.path("playlists");
+        let remote = Location::Remote {
+            source: crate::library::SourceKey("navidrome-3f9a".to_owned()),
+            id: "al/bum 7%".to_owned(),
+        };
+        let items = [
+            Track { location: Location::from(song.clone()), title: None, duration: None },
+            Track { location: remote.clone(), title: Some("Kalben - Gece Mavisi".to_owned()), duration: None },
+        ];
+        let path = write(&folder, "Karışık", &items).expect("written");
+        let text = fs::read_to_string(&path).expect("the file");
+        assert!(
+            text.contains("qmus://navidrome-3f9a/al%2Fbum%207%25\n"),
+            "a slash, a space and a percent escaped: {text}"
+        );
+        let playlist = read(&path).expect("read back");
+        assert_eq!(playlist.items[0].location, Location::from(song));
+        assert_eq!(playlist.items[1].location, remote);
+        assert_eq!(playlist.items[1].title.as_deref(), Some("Kalben - Gece Mavisi"));
+        assert!(playlist.items[1].present, "whether it is still there is the account's to say");
     }
 }

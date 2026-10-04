@@ -4,7 +4,7 @@
 use super::*;
 
 /// Selects the whole name box and types `name` over it.
-fn name_it(h: &mut Harness<Music>, name: &str) {
+pub(super) fn name_it(h: &mut Harness<Music>, name: &str) {
     h.press("ctrl+a");
     h.type_text(name);
 }

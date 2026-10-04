@@ -12,14 +12,19 @@ use super::{Bus, Machine, Music, Opening, UpdateFolders};
 use crate::audio::{AudioOut, State};
 use crate::testing::{Scratch, tagged_wav};
 
+mod accounts;
 mod bus;
+mod catalogue;
+mod jellyfin;
 mod menu;
 mod now_playing;
 mod pages;
 mod player;
 mod playlists;
+mod remote;
 mod screen;
 mod settings;
+mod spotify;
 mod visualizer;
 
 /// Long enough for background work to come back.
@@ -48,6 +53,9 @@ fn machine(scratch: &Scratch) -> Machine {
         bus: Bus::Nowhere,
         covers: Some(scratch.path("cache/art")),
         playlists: Some(scratch.path("data/playlists")),
+        listings: Some(scratch.path("cache/sources")),
+        streams: Some(scratch.path("cache/stream")),
+        spotify: None,
     }
 }
 

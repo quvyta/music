@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use qframe::prelude::*;
 use qframe::widgets::{ContextItem, Toast};
 
+use super::pages::Shown;
 use super::{Msg, Music, Page};
 use crate::playlist;
 
@@ -22,6 +23,8 @@ pub enum TrackMenu {
     Album(usize),
     /// Open its artist.
     Artist(usize),
+    /// Search the other sources for it, by its artist and title.
+    Elsewhere(usize),
 }
 
 impl Music {
@@ -29,6 +32,8 @@ impl Music {
     /// this frame: everything it needs is copied in.
     pub(super) fn track_menu(&self) -> impl Fn(usize) -> Vec<ContextItem<Msg>> + 'static {
         let list = self.list.clone();
+        // Another source is there to look in once there is an account.
+        let elsewhere = (!self.accounts.is_empty()).then(|| t!("music.menu.elsewhere"));
         let playlists: Vec<(String, PathBuf)> =
             self.shelf.all.iter().map(|(entry, _)| (entry.name.clone(), entry.path.clone())).collect();
         let labels = [
@@ -55,6 +60,9 @@ impl Music {
             }
             items.push(ContextItem::new(album, Msg::Menu(TrackMenu::Album(row))).icon("music-album"));
             items.push(ContextItem::new(artist, Msg::Menu(TrackMenu::Artist(row))).icon("music-artist"));
+            if let Some(elsewhere) = &elsewhere {
+                items.push(ContextItem::new(elsewhere.clone(), Msg::Menu(TrackMenu::Elsewhere(row))).icon("search"));
+            }
             items
         }
     }
@@ -65,7 +73,7 @@ impl Music {
             TrackMenu::Next(row) | TrackMenu::Append(row) if self.current.is_none() => self.play(row),
             TrackMenu::Next(row) => {
                 let Some(track) = self.tracks().get(row) else { return Command::none() };
-                let (path, title) = (track.path.clone(), track.title.clone());
+                let (path, title) = (track.location.clone(), track.title.clone());
                 self.queue.play_next([path]);
                 self.follow();
                 self.refresh_lists();
@@ -73,7 +81,7 @@ impl Music {
             }
             TrackMenu::Append(row) => {
                 let Some(track) = self.tracks().get(row) else { return Command::none() };
-                let (path, title) = (track.path.clone(), track.title.clone());
+                let (path, title) = (track.location.clone(), track.title.clone());
                 self.queue.append([path]);
                 self.follow();
                 self.refresh_lists();
@@ -86,6 +94,7 @@ impl Music {
                 self.query.clear();
                 self.show_page(Page::Albums)
             }
+            TrackMenu::Elsewhere(row) => self.find_elsewhere(row),
             TrackMenu::Artist(row) => {
                 self.artist_open = self.artists.iter().position(|artist| artist.tracks.contains(&row));
                 self.cursor = None;
@@ -95,12 +104,36 @@ impl Music {
         }
     }
 
+    /// Searches the sources other than the track of `row`'s own for its artist and title: the
+    /// other one when there is only one, every source when there are more. Nothing is chosen or
+    /// played: which of what is found is the same track is the person's to say.
+    fn find_elsewhere(&mut self, row: usize) -> Command<Msg> {
+        let Some(track) = self.tracks().get(row) else { return Command::none() };
+        let own = Shown::of(track);
+        let words: Vec<&str> =
+            [track.artist.as_str(), track.title.as_str()].into_iter().filter(|word| !word.is_empty()).collect();
+        let query = words.join(" ");
+        let others: Vec<Shown> = std::iter::once(Shown::Local)
+            .chain(self.accounts.iter().map(|account| Shown::Account(account.key.clone())))
+            .filter(|shown| *shown != own)
+            .collect();
+        self.shown = match others.as_slice() {
+            [only] => only.clone(),
+            _ => Shown::All,
+        };
+        self.query = query;
+        self.album_open = None;
+        self.artist_open = None;
+        self.cursor = None;
+        self.show_page(Page::Tracks)
+    }
+
     /// Adds the track of `row` to the end of the playlist at `list`, keeping what the playlist
     /// already says of its other tracks.
     fn add_to_playlist(&mut self, row: usize, list: &std::path::Path) -> Command<Msg> {
         let Some(track) = self.tracks().get(row) else { return Command::none() };
         let added = playlist::Track {
-            path: track.path.clone(),
+            location: track.location.clone(),
             title: Some(if track.artist.is_empty() {
                 track.title.clone()
             } else {
@@ -113,7 +146,7 @@ impl Music {
             let mut items: Vec<playlist::Track> = read
                 .items
                 .into_iter()
-                .map(|item| playlist::Track { path: item.path, title: item.title, duration: item.duration })
+                .map(|item| playlist::Track { location: item.location, title: item.title, duration: item.duration })
                 .collect();
             items.push(added);
             playlist::replace(list, &items).map(|()| read.name)

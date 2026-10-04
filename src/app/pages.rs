@@ -1,20 +1,22 @@
 //! The pages beside the tracks: the queue, the albums and the artists, the side bar that leads to
 //! them and the search that narrows them.
 
-use std::path::Path;
 use std::sync::Arc;
 
 use qframe::prelude::*;
 use qframe::widgets::{
-    Column, ColumnWidth, EmptyState, Menu, MenuGroup, MenuItem, Table, TableCell, TableRow, TextInput,
+    Column, ColumnWidth, EmptyState, Menu, MenuGroup, MenuItem, Segmented, Table, TableCell, TableRow, TextInput,
 };
 
 use super::{Msg, Music, Page, clock, view};
-use crate::library;
+use crate::library::{self, Location};
 use crate::queue::Repeat;
 
 /// The search box.
 pub(super) const SEARCH: &str = "search";
+
+/// The source picker.
+pub(super) const SOURCES: &str = "sources";
 
 /// The table of the albums.
 pub(super) const ALBUMS: &str = "albums";
@@ -66,6 +68,36 @@ pub enum PageMsg {
     QueuePlay(usize),
     /// Delete: the row under the queue's cursor leaves the queue.
     QueueRemove,
+    /// The source picker's option at this place was chosen.
+    Source(usize),
+}
+
+/// Whose music the tracks, albums and artists pages show; chosen for this run only.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(super) enum Shown {
+    /// Every source's.
+    #[default]
+    All,
+    /// This computer's.
+    Local,
+    /// The account's with this key.
+    Account(String),
+}
+
+impl Shown {
+    /// The source `track` is from.
+    pub(super) fn of(track: &library::Track) -> Self {
+        track.location.source().map_or(Self::Local, |source| Self::Account(source.0.clone()))
+    }
+
+    /// Whether `track` is among the music shown.
+    pub(super) fn holds(&self, track: &library::Track) -> bool {
+        match self {
+            Self::All => true,
+            Self::Local => track.location.source().is_none(),
+            Self::Account(key) => track.location.source().is_some_and(|source| source.0 == *key),
+        }
+    }
 }
 
 impl Music {
@@ -74,10 +106,12 @@ impl Music {
     pub(super) fn refresh_lists(&mut self) {
         let Some(tracks) = self.tracks.clone() else { return };
         let query = self.query.clone();
+        let shown = self.shown.clone();
         let albums: Vec<usize> = (0..self.albums.len())
             .filter(|at| {
                 let album = &self.albums[*at];
-                library::found(&format!("{} {}", album.title, album.artist), &query)
+                shown.holds(&tracks[album.tracks[0]])
+                    && library::found(&format!("{} {}", album.title, album.artist), &query)
             })
             .collect();
         let album_rows = albums
@@ -92,8 +126,12 @@ impl Music {
                 ])
             })
             .collect();
-        let artists: Vec<usize> =
-            (0..self.artists.len()).filter(|at| library::found(&self.artists[*at].name, &query)).collect();
+        let artists: Vec<usize> = (0..self.artists.len())
+            .filter(|at| {
+                let artist = &self.artists[*at];
+                artist.tracks.iter().any(|row| shown.holds(&tracks[*row])) && library::found(&artist.name, &query)
+            })
+            .collect();
         let artist_rows = artists
             .iter()
             .map(|at| {
@@ -116,7 +154,7 @@ impl Music {
         self.album_list = (albums, album_rows);
         self.artist_list = (artists, artist_rows);
         self.refresh_shelf();
-        let list: Vec<usize> = match (self.page, self.album_open, self.artist_open) {
+        let mut list: Vec<usize> = match (self.page, self.album_open, self.artist_open) {
             (Page::Playlists, ..) => self.playlist_rows(),
             (Page::Albums, Some(at), _) => self.albums.get(at).map(|album| album.tracks.clone()).unwrap_or_default(),
             (Page::Artists, _, Some(at)) => {
@@ -124,6 +162,14 @@ impl Music {
             }
             _ => (0..tracks.len()).filter(|row| library::matches(&tracks[*row], &query)).collect(),
         };
+        if self.page != Page::Playlists {
+            list.retain(|row| shown.holds(&tracks[*row]));
+            // What the search finds is grouped by where it is from: this computer's first, then
+            // each account's in the order they were added.
+            if !query.is_empty() {
+                list.sort_by_key(|row| self.source_place(&tracks[*row]));
+            }
+        }
         self.list_rows = if list.len() == tracks.len() {
             Arc::clone(&self.rows)
         } else {
@@ -136,18 +182,69 @@ impl Music {
         self.list = list;
     }
 
+    /// Where the source of `track` stands among the sources: this computer first, then the
+    /// accounts in the order they were added.
+    fn source_place(&self, track: &library::Track) -> usize {
+        track.location.source().map_or(0, |source| {
+            self.accounts.iter().position(|account| account.key == source.0).map_or(usize::MAX, |at| at + 1)
+        })
+    }
+
+    /// The source picker's choices: every source, this computer, then each account, with what
+    /// the search finds in each while it holds a word.
+    fn source_options(&self) -> Vec<(Shown, String)> {
+        let mut options = vec![(Shown::All, t!("music.source.all")), (Shown::Local, t!("music.source.local"))];
+        options.extend(self.accounts.iter().map(|account| (Shown::Account(account.key.clone()), account.name.clone())));
+        if self.query.is_empty() {
+            return options;
+        }
+        let tracks = self.tracks();
+        options
+            .into_iter()
+            .map(|(shown, label)| {
+                let found =
+                    tracks.iter().filter(|track| shown.holds(track) && library::matches(track, &self.query)).count();
+                // The dot sets the name and the count apart in every language alike.
+                (shown, format!("{label} · {found}"))
+            })
+            .collect()
+    }
+
+    /// The source picker over the tracks, albums and artists, while there is an account to
+    /// choose between.
+    pub(super) fn source_picker(&self, ui: &mut View<'_, Msg>) {
+        if self.accounts.is_empty() {
+            return;
+        }
+        let options = self.source_options();
+        let selected = options.iter().position(|(shown, _)| *shown == self.shown).unwrap_or(0);
+        ui.row(|ui| {
+            ui.add(
+                Segmented::new(options.into_iter().map(|(_, label)| label))
+                    .selected(selected)
+                    .on_select(|at| Msg::Pages(PageMsg::Source(at))),
+            )
+            .id(SOURCES);
+        })
+        .padding(Padding::symmetric(0, 1))
+        .fill_width();
+    }
+
     /// Shows `page`, closing the side bar over the body, and gives its list the keyboard.
     pub(super) fn show_page(&mut self, page: Page) -> Command<Msg> {
         if page == Page::Playlists && self.page != Page::Playlists {
             self.shelf.open = None;
         }
-        if page == Page::Playlists && self.shelf.open.is_none() {
+        let asked = if page == Page::Playlists && self.shelf.open.is_none() {
             self.read_playlists();
-        }
+            self.ask_playlists()
+        } else {
+            Command::none()
+        };
         self.page = page;
         self.sidebar_open = false;
         self.refresh_lists();
-        Command::focus(self.list_of_page())
+        Command::batch([asked, Command::focus(self.list_of_page())])
     }
 
     /// The name of the list that takes the keyboard on the page shown.
@@ -190,6 +287,13 @@ impl Music {
     /// Carries out `msg`.
     pub(super) fn page_msg(&mut self, msg: PageMsg) -> Command<Msg> {
         match msg {
+            PageMsg::Source(at) => {
+                let Some((shown, _)) = self.source_options().into_iter().nth(at) else { return Command::none() };
+                self.shown = shown;
+                self.refresh_lists();
+                // The choice made, the list chosen takes the keyboard again.
+                return Command::focus(self.list_of_page());
+            }
             PageMsg::SearchFocus => {
                 // The search narrows lists; the pages without one give way to the tracks.
                 if matches!(self.page, Page::NowPlaying | Page::Queue) {
@@ -248,7 +352,7 @@ impl Music {
             self.queue.advance();
         }
         self.queue.set_repeat(repeat);
-        let Some(index) = self.queue.current().map(Path::to_path_buf).and_then(|path| self.playable_row(&path)) else {
+        let Some(index) = self.queue.current().cloned().and_then(|path| self.playable_row(&path)) else {
             return Command::none();
         };
         self.queue_cursor = Some(0);
@@ -283,7 +387,7 @@ impl Music {
 
     /// The queue page: the track heard, then what plays after it.
     pub(super) fn queue_page(&self, ui: &mut View<'_, Msg>) {
-        let upcoming: Vec<&Path> = self.queue.upcoming().take(QUEUE_SHOWN).collect();
+        let upcoming: Vec<&Location> = self.queue.upcoming().take(QUEUE_SHOWN).collect();
         if upcoming.is_empty() {
             ui.add(EmptyState::new(t!("music.queue.empty")).icon("music-queue").message(t!("music.player.idle")))
                 .fill();
@@ -295,7 +399,13 @@ impl Music {
             .map(|(at, path)| {
                 let track = self.places.get(*path).and_then(|row| self.tracks().get(*row));
                 let (title, artist, time) = track.map_or_else(
-                    || (path.display().to_string(), String::new(), String::new()),
+                    || {
+                        (
+                            path.file().map(|file| file.display().to_string()).unwrap_or_default(),
+                            String::new(),
+                            String::new(),
+                        )
+                    },
                     |track| (track.title.clone(), track.artist.clone(), track.duration.map(clock).unwrap_or_default()),
                 );
                 // The track heard is marked with the note the player bar's name stands beside.
@@ -319,7 +429,8 @@ impl Music {
             Table::new(columns, Arc::from(rows))
                 .selected(self.queue_cursor)
                 .on_select(|at| Msg::Pages(PageMsg::QueueSelect(at)))
-                .on_activate(|at| Msg::Pages(PageMsg::QueuePlay(at))),
+                .on_activate(|at| Msg::Pages(PageMsg::QueuePlay(at)))
+                .space_activates(false),
         )
         .fill()
         .id(QUEUE);
@@ -342,7 +453,8 @@ impl Music {
             Table::new(columns, Arc::clone(&self.album_list.1))
                 .selected(self.group_cursor.0)
                 .on_select(|at| Msg::Pages(PageMsg::AlbumSelect(at)))
-                .on_activate(|at| Msg::Pages(PageMsg::AlbumOpen(at))),
+                .on_activate(|at| Msg::Pages(PageMsg::AlbumOpen(at)))
+                .space_activates(false),
         )
         .fill()
         .id(ALBUMS);
@@ -364,7 +476,8 @@ impl Music {
             Table::new(columns, Arc::clone(&self.artist_list.1))
                 .selected(self.group_cursor.1)
                 .on_select(|at| Msg::Pages(PageMsg::ArtistSelect(at)))
-                .on_activate(|at| Msg::Pages(PageMsg::ArtistOpen(at))),
+                .on_activate(|at| Msg::Pages(PageMsg::ArtistOpen(at)))
+                .space_activates(false),
         )
         .fill()
         .id(ARTISTS);

@@ -309,3 +309,63 @@ fn the_next_track_of_the_queue_follows_with_no_stop_between() {
     assert!(h.screen().contains("Haydi Söyle · Kalben"), "{}", h.screen());
     wait_for(&mut h, |music| state(music) == State::Ended);
 }
+
+#[test]
+fn space_on_the_tracks_holds_the_track_heard_and_goes_on_without_starting_it_anew() {
+    let scratch = Scratch::new("play-space");
+    let folder = albums(&scratch);
+    let mut h = open(&scratch, &folder);
+    h.press("enter");
+    wait_for(&mut h, |music| state(music) == State::Playing && music.status().position > Duration::ZERO);
+    assert!(h.is_focused("tracks"), "the table holds the focus");
+    h.press("down");
+    h.press("space");
+    settle(&mut h);
+    assert_eq!(state(h.app()), State::Paused, "space holds the sound rather than playing the row:\n{}", h.screen());
+    assert_eq!(h.app().current().map(|track| track.title.as_str()), Some("Uzun Yol"));
+    h.press("space");
+    wait_for(&mut h, |music| state(music) == State::Playing);
+    assert_eq!(h.app().current().map(|track| track.title.as_str()), Some("Uzun Yol"));
+    assert_eq!(h.app().player.plays(), 1, "it went on; the row under the cursor was not started");
+}
+
+/// The row of the player bar and the cells its seek bar spans, between the two times.
+fn seek_bar(h: &Harness<Music>, total: &str) -> (i32, std::ops::Range<i32>) {
+    let screen = h.screen();
+    let lines: Vec<&str> = screen.lines().collect();
+    let row = lines
+        .iter()
+        .rposition(|line| line.contains("0:00") && line.contains(total))
+        .unwrap_or_else(|| panic!("no bar:\n{screen}"));
+    let line = lines[row];
+    let start = line[..line.find("0:00").expect("the time")].chars().count() + "0:00".len() + 1;
+    let end = line[..line.rfind(total).expect("the length")].chars().count() - 1;
+    let to = |cells: usize| i32::try_from(cells).expect("cells");
+    (to(row), to(start)..to(end))
+}
+
+#[test]
+fn a_press_on_the_bar_moves_the_track_to_where_it_landed_and_the_pointer_names_the_time() {
+    let scratch = Scratch::new("play-seek-bar");
+    let folder = albums(&scratch);
+    let mut h = open(&scratch, &folder);
+    h.press("enter");
+    wait_for(&mut h, |music| state(music) == State::Playing);
+    h.press("p");
+    settle(&mut h);
+    h.press("home");
+    let (row, cells) = seek_bar(&h, "0:03");
+    let middle = (cells.start + cells.end) / 2;
+    h.hover(middle, row);
+    h.advance(super::super::TICK);
+    assert!(h.screen().contains("0:01"), "the pointer's place is named as a time:\n{}", h.screen());
+    let three_quarters = cells.start + (cells.end - cells.start) * 3 / 4;
+    h.click(three_quarters, row);
+    settle(&mut h);
+    let at = h.app().status().position;
+    assert!(
+        at >= Duration::from_millis(1800) && at < Duration::from_secs(3),
+        "the press three quarters along a three-second track lands past its middle: {at:?}"
+    );
+    assert_eq!(state(h.app()), State::Paused, "a seek keeps the sound held");
+}

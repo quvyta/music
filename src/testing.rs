@@ -1,6 +1,10 @@
 //! What the tests share: a temporary folder removed when the test ends, and short sound files made
 //! on the spot. No test reads the person's own music.
 
+pub mod jellyfin;
+pub mod server;
+pub mod spotify;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};

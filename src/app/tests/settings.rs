@@ -23,14 +23,14 @@ fn the_update_switch_is_shown_only_where_it_can_be_kept() {
     let folder = albums(&scratch);
     let mut h = open(&scratch, &folder);
     // Tall enough for the whole settings page.
-    h.resize(100, 40);
+    h.resize(100, 60);
     click_icon(&mut h, "settings");
     settle(&mut h);
     assert!(h.screen().contains("Say when an update is out"), "{}", h.screen());
     let bare = Scratch::new("settings-bare");
     let machine = Machine { updates: None, ..machine(&bare) };
     let mut h = open_on(machine, &albums(&bare), crate::locales::env(), 100);
-    h.resize(100, 40);
+    h.resize(100, 60);
     click_icon(&mut h, "settings");
     settle(&mut h);
     assert!(h.screen().contains("Settings"), "{}", h.screen());
@@ -44,7 +44,7 @@ fn a_theme_chosen_for_qmus_alone_is_shown_as_its_own() {
     let machine = machine(&scratch);
     let config = machine.config.clone().expect("folder");
     let opening = Opening::new(machine, folder);
-    let mut h = Harness::member_in(opening.music, Ecosystem::QUVYTA, &config, super::super::APP, 100, 30);
+    let mut h = Harness::member_in(opening.music, Ecosystem::QUVYTA, &config, super::super::APP, 100, 60);
     h.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true);
     settle(&mut h);
     click_icon(&mut h, "settings");
@@ -78,7 +78,7 @@ fn the_runtime_qmus_runs_follows_a_theme_another_application_sets() {
     let machine = machine(&scratch);
     let config = machine.config.clone().expect("folder");
     let opening = Opening::new(machine, folder);
-    let mut h = crate::runtime(opening, Some(config.clone())).harness_in(&config, 100, 30).expect("opened");
+    let mut h = crate::runtime(opening, Some(config.clone())).harness_in(&config, 100, 60).expect("opened");
     h.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true);
     settle(&mut h);
     // The media icons are the shared set's: the play button is drawn and can be pressed.
@@ -113,6 +113,7 @@ fn with_picking_up_turned_off_the_last_queue_does_not_come_back() {
     // Adamlar's long track, still heard when qmus closes.
     h.press("enter");
     settle(&mut h);
+    h.resize(100, 60);
     click_icon(&mut h, "settings");
     settle(&mut h);
     click_row(&mut h, "Pick up where you left off");
@@ -128,6 +129,7 @@ fn with_picking_up_turned_off_the_last_queue_does_not_come_back() {
     // Adamlar's long track, still heard when qmus closes.
     h.press("enter");
     settle(&mut h);
+    h.resize(100, 60);
     click_icon(&mut h, "settings");
     settle(&mut h);
     click_row(&mut h, "Pick up where you left off");
@@ -147,6 +149,7 @@ fn a_visualizer_turned_off_leaves_the_player_bar_without_it() {
     let mut h = open(&scratch, &folder);
     let bar = |h: &Harness<Music>| h.screen().lines().last().expect("the bar").to_owned();
     assert!(bar(&h).contains("▁▁▁▁"), "the visualizer rests in the bar:\n{}", h.screen());
+    h.resize(100, 60);
     click_icon(&mut h, "settings");
     settle(&mut h);
     h.click_text("Off");
@@ -168,6 +171,20 @@ fn click_last(h: &mut Harness<Music>, text: &str) {
     h.click(i32::try_from(column).expect("a column"), i32::try_from(row).expect("a row"));
 }
 
+/// Clicks the last place `text` shows on the row that names `row` (the row's label and its button
+/// share a line).
+fn click_in_row(h: &mut Harness<Music>, row: &str, text: &str) {
+    let screen = h.screen();
+    let (at, line) = screen
+        .lines()
+        .enumerate()
+        .find(|(_, line)| line.contains(row))
+        .unwrap_or_else(|| panic!("no {row}:\n{screen}"));
+    let column =
+        line.rfind(text).map(|found| line[..found].chars().count()).unwrap_or_else(|| panic!("no {text} on {row}"));
+    h.click(i32::try_from(column).expect("a column"), i32::try_from(at).expect("a row"));
+}
+
 /// The titles of the tracks the screen lists.
 fn titles(h: &Harness<Music>) -> Vec<String> {
     h.app().tracks().iter().map(|track| track.title.clone()).collect()
@@ -179,11 +196,11 @@ fn a_folder_added_in_the_settings_joins_the_library_and_is_kept() {
     let folder = albums(&scratch);
     tagged_wav(&scratch.path("ekstra/yeni/1.wav"), 0.4, "Gece Mavisi", "Kalben", "Yeni", 1);
     let mut h = open(&scratch, &folder);
-    h.resize(100, 40);
+    h.resize(100, 60);
     assert!(!titles(&h).contains(&"Gece Mavisi".to_owned()));
     click_icon(&mut h, "settings");
     settle(&mut h);
-    click_last(&mut h, "Add");
+    click_in_row(&mut h, "Add a folder", "Add");
     settle(&mut h);
     // The picker opens above the folder qmus opens with, where the added folder sits.
     h.click_text("ekstra");
@@ -207,10 +224,10 @@ fn a_folder_already_read_is_not_added_twice() {
     let scratch = Scratch::new("settings-add-inside");
     let folder = albums(&scratch);
     let mut h = open(&scratch, &folder);
-    h.resize(100, 40);
+    h.resize(100, 60);
     click_icon(&mut h, "settings");
     settle(&mut h);
-    click_last(&mut h, "Add");
+    click_in_row(&mut h, "Add a folder", "Add");
     settle(&mut h);
     // The picker's row, below the header that also names the folder.
     click_last(&mut h, "music");
@@ -233,7 +250,7 @@ fn a_folder_removed_leaves_the_library_and_its_music_stays() {
     std::fs::create_dir_all(scratch.path("config")).expect("folder");
     std::fs::write(scratch.path("config/music.conf"), conf).expect("written");
     let mut h = open(&scratch, &folder);
-    h.resize(100, 40);
+    h.resize(100, 60);
     assert!(titles(&h).contains(&"Gece Mavisi".to_owned()), "{:?}", titles(&h));
     assert!(h.screen().contains("~/music +1"), "{}", h.screen());
     click_icon(&mut h, "settings");
@@ -251,7 +268,7 @@ fn reading_again_finds_music_added_and_keeps_the_track_heard() {
     let scratch = Scratch::new("settings-rescan");
     let folder = albums(&scratch);
     let mut h = open(&scratch, &folder);
-    h.resize(100, 40);
+    h.resize(100, 60);
     // Adamlar's long track.
     h.press("enter");
     settle(&mut h);

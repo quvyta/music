@@ -8,6 +8,8 @@ use std::sync::Arc;
 use zbus::zvariant::{ObjectPath, OwnedValue};
 
 use super::*;
+use crate::app::Msg;
+use crate::library::{Location, SourceKey, Track};
 use crate::mpris::tests::{Client, changes, ends, entries, text};
 
 /// The screen showing `folder` on one end of a socket pair, and a client on the other, once the
@@ -156,4 +158,33 @@ fn the_bus_names_the_kept_copy_of_the_albums_cover() {
     let kept = h.app().art.as_ref().and_then(|art| art.file.clone()).expect("a copy for the desktop");
     let metadata: HashMap<String, OwnedValue> = client.get("Metadata");
     assert_eq!(text(&metadata["mpris:artUrl"]), format!("file://{}", kept.display()));
+}
+
+#[test]
+fn an_accounts_track_is_on_the_bus_without_an_address_and_the_screen_goes_on_past_it() {
+    let scratch = Scratch::new("bus-remote");
+    let folder = albums(&scratch);
+    let (mut h, client) = served(&scratch, &folder);
+    let remote = Track {
+        location: Location::Remote { source: SourceKey("navidrome-3f9a".into()), id: "tr-17".into() },
+        title: "Uzak Yol".to_owned(),
+        artist: "Adamlar".to_owned(),
+        // Before "Eski" in the library's order, so it is the first row.
+        album: "Ayrı".to_owned(),
+        number: Some(1),
+        duration: Some(Duration::from_secs(3)),
+        playable: true,
+    };
+    let mut tracks = vec![remote];
+    tracks.extend(h.app().tracks().iter().cloned());
+    h.send(Msg::Scanned(tracks.into()));
+    h.press("home");
+    h.press("enter");
+    let metadata: HashMap<String, OwnedValue> = client.get("Metadata");
+    assert_eq!(text(&metadata["xesam:title"]), "Uzak Yol");
+    assert!(!metadata.contains_key("xesam:url"), "an account's track names no address: {metadata:?}");
+    // It cannot be played yet, so the next one is, as after any track that cannot be opened.
+    wait_for(&mut h, |music| {
+        music.current().is_some_and(|track| track.title == "Uzun Yol") && state(music) == State::Playing
+    });
 }
