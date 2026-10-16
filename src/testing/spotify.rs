@@ -8,6 +8,7 @@ use symphonia::core::io::MediaSource;
 
 use super::server::{FakeServer, Response};
 use crate::sources::spotify::Setup;
+
 use crate::sources::spotify::audio::{Audio, SpotifyAudio};
 use crate::sources::spotify::login::Endpoints;
 
@@ -26,7 +27,21 @@ impl SpotifyAudio for Tone {
 /// Spotify for a person whose account is `product` ("premium" or "free"), with two liked songs of
 /// Kalben's "Ayrı" and one playlist of them.
 pub fn start(product: &'static str) -> FakeServer {
-    FakeServer::start(move |request| match request.path.as_str() {
+    FakeServer::start(move |request| answer(product, false, request))
+}
+
+/// The same Spotify, its Web API rationed: every request to it is asked to wait an hour, as
+/// Spotify does for the client id every librespot player shares.
+pub fn start_rationed(product: &'static str) -> FakeServer {
+    FakeServer::start(move |request| answer(product, true, request))
+}
+
+/// What Spotify says to `request`.
+fn answer(product: &str, rationed: bool, request: &super::server::Request) -> Response {
+    if rationed && request.path.starts_with("/v1/") {
+        return Response { status: 429, ..Response::json("{}") }.header("Retry-After", "3600");
+    }
+    match request.path.as_str() {
         "/api/token"
             if request.body.contains(&format!("code={CODE}")) || request.body.contains("grant_type=refresh") =>
         {
@@ -45,11 +60,12 @@ pub fn start(product: &'static str) -> FakeServer {
             Response::json(r#"{"items":[{"id":"pl1","name":"Yol","tracks":{"total":2}}],"next":null}"#)
         }
         _ => Response::status(404),
-    })
+    }
 }
 
-/// How qmus logs in to `server` and plays the tone at `tone`, listening on a free port.
-pub fn setup(server: &FakeServer, tone: &Path) -> Setup {
+/// How qmus logs in to `server` and plays the tone at `tone`, listening on a free port; the
+/// session, like librespot's, turns away an account whose `product` is not "premium".
+pub fn setup(server: &FakeServer, tone: &Path, product: &'static str) -> Setup {
     let tone = tone.to_path_buf();
     Setup {
         endpoints: Endpoints {
@@ -59,6 +75,11 @@ pub fn setup(server: &FakeServer, tone: &Path) -> Setup {
         api: format!("{}/v1", server.url()),
         client: "client-1".to_owned(),
         port: 0,
-        audio: Arc::new(move |_| Ok(Arc::new(Tone(tone.clone())) as Audio)),
+        audio: Arc::new(move |_| {
+            if product != "premium" {
+                return Err(crate::sources::SourceError::Premium);
+            }
+            Ok(Arc::new(Tone(tone.clone())) as Audio)
+        }),
     }
 }

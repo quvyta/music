@@ -5,7 +5,7 @@ use super::*;
 /// The screen showing `folder` at `width` × `height`, motion on.
 fn open_large(scratch: &Scratch, folder: &Path, width: u16, height: u16) -> Harness<Music> {
     let opening = Opening::new(machine(scratch), folder.to_path_buf());
-    let mut h = Harness::with_env(opening.music, crate::locales::env(), width, height);
+    let mut h = Harness::with_env(opening.music, crate::locales::test_env(), width, height);
     h.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(false);
     settle(&mut h);
     h
@@ -114,7 +114,7 @@ fn at_every_width_the_player_bar_keeps_the_name_both_times_and_the_buttons() {
         assert!(bar.contains("Uzun Yol · Adamlar"), "{width}:\n{screen}");
         assert!(bar.contains("0:03"), "{width}:\n{screen}");
         assert!(bar.contains(&h.env().icons().glyph("media-pause").into_owned()), "{width}:\n{screen}");
-        assert_eq!(bar.contains("100"), width >= 100, "the volume where there is room, {width}:\n{screen}");
+        assert!(bar.contains("100"), "the volume at every width, {width}:\n{screen}");
     }
 }
 

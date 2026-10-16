@@ -119,3 +119,73 @@ fn playlists_list_and_open_in_their_own_order() {
     assert_eq!(titles, ["Yedi", "Üç"]);
     assert_eq!(spotify.playlist("pl9").err(), Some(SourceError::NotFound));
 }
+
+/// A Web API that asks to wait `after` seconds the first `times` times it is asked for the liked
+/// songs, then answers.
+fn rationing(after: &'static str, times: usize) -> FakeServer {
+    let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    FakeServer::start(move |request| {
+        if request.path == "/v1/me/tracks" && count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) < times {
+            return Response { status: 429, ..Response::json("{}") }.header("Retry-After", after);
+        }
+        Response::json(&format!(r#"{{"items":[{}],"next":null}}"#, song("s1", "Bir")))
+    })
+}
+
+#[test]
+fn a_short_wait_spotify_asks_for_is_waited_and_the_request_sent_again() {
+    let server = rationing("1", 1);
+    let started = Instant::now();
+    let tracks = account(&server, tokens("taze", false)).catalogue().expect("listed after the wait");
+    assert_eq!(tracks.len(), 1);
+    assert!(started.elapsed() >= Duration::from_millis(900), "waited as asked: {:?}", started.elapsed());
+    assert_eq!(server.requests().len(), 2);
+}
+
+#[test]
+fn a_long_wait_spotify_asks_for_is_said_at_once_and_not_waited() {
+    let server = rationing("3600", usize::MAX);
+    let started = Instant::now();
+    let answer = account(&server, tokens("taze", false)).catalogue();
+    assert_eq!(answer.err(), Some(SourceError::Wait(Duration::from_secs(3600))));
+    assert!(started.elapsed() < Duration::from_secs(10), "not waited: {:?}", started.elapsed());
+    assert_eq!(server.requests().len(), 1, "asked once");
+}
+
+#[test]
+fn spotify_asking_again_and_again_ends_in_the_wait_being_said() {
+    let server = rationing("1", usize::MAX);
+    let answer = account(&server, tokens("taze", false)).catalogue();
+    assert_eq!(answer.err(), Some(SourceError::Wait(Duration::from_secs(1))));
+    assert_eq!(server.requests().len(), 3, "a bounded number of tries");
+}
+
+/// A session that lists the liked songs itself.
+struct Listing;
+
+impl crate::sources::spotify::audio::SpotifyAudio for Listing {
+    fn open(&self, _id: &str) -> Result<Box<dyn symphonia::core::io::MediaSource>, String> {
+        Err("no sound here".to_owned())
+    }
+
+    fn liked(&self) -> Option<Result<Vec<RemoteTrack>, SourceError>> {
+        Some(Ok(vec![RemoteTrack {
+            id: "s9".into(),
+            title: "Oturumdan".into(),
+            artist: "Kalben".into(),
+            album: String::new(),
+            number: None,
+            duration: None,
+            cover: None,
+        }]))
+    }
+}
+
+#[test]
+fn the_liked_songs_come_from_the_session_when_it_can_give_them_and_the_web_api_is_spared() {
+    let server = rationing("3600", usize::MAX);
+    let spotify = account(&server, tokens("taze", false)).with_audio(std::sync::Arc::new(Listing));
+    let tracks = spotify.catalogue().expect("from the session");
+    assert_eq!(tracks[0].title, "Oturumdan");
+    assert!(server.requests().is_empty(), "the Web API was not asked");
+}

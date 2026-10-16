@@ -37,18 +37,26 @@ Add the server in the settings (`ctrl+,`, Accounts): its address, your user name
 - The account list is in `~/.config/quvyta/music.accounts`: the name, address and user name of each account, never a password. Removing an account asks first and forgets it in qmus only; nothing on the server changes.
 - An address that starts with `http://` and is not on your home network is marked unencrypted in the settings: your login would cross the network readable.
 
-## Spotify Premium (not built by default)
-
-Spotify support is new and has not yet been tried on enough real accounts to be built by default. To try it, install with `cargo install quvyta-music --features spotify`.
+## Spotify Premium
 
 qmus plays your Spotify liked songs and playlists through [librespot](https://github.com/librespot-org/librespot), an unofficial Spotify client: Spotify gives no way for a new player to play its music, so qmus logs in the way Spotify's own players do. Spotify may change that at any time, and it is between you and Spotify whether you use it.
 
 - It needs a Premium account: Spotify lets no other account play in another player. qmus checks when you log in, and says so.
 - Log in from the settings (`ctrl+,`, Accounts, Spotify Premium): Spotify's own login page opens in your browser, you log in there, and the browser comes back to qmus by itself. qmus never sees your Spotify password. When the browser is on another machine (qmus over SSH), paste the address the browser ended on into the dialog.
 - The session is held only while qmus is open; after a restart the account asks you to log in again (one click when the browser remembers you). Of Spotify's, qmus writes to disk only the names, artists, albums and lengths of your liked songs, so the next start can show them at once, and a copy of each album cover shown, for the desktop's "now playing" corner; never the sound.
-- The sound is Spotify's own file of the track, decoded by qmus, so the visualizer and the gapless queue work as with your files. qmus does not skip or change anything Spotify plays, and plays no advertisements because Premium has none.
+- The sound is Spotify's own file of the track, decoded by qmus, so the visualizer and the gapless queue work as with your files. qmus does not skip or change anything Spotify plays.
 - Spotify's play history does not hear from other players, so there is nothing to report there.
-- Without the `spotify` feature, which is how qmus is built by default, the account is not offered at all.
+- Spotify rations its Web API for the login every librespot player shares. qmus logs in and reads your liked songs through the session itself, and when Spotify asks it to wait it waits a few seconds on its own or tells you how long Spotify asked for.
+- Built without the `spotify` feature (`cargo install quvyta-music --no-default-features`), qmus leaves librespot out and does not offer the account at all.
+
+## YouTube Music (not built by default)
+
+qmus can play your YouTube Music liked music through [yt-dlp](https://github.com/yt-dlp/yt-dlp). This is unofficial: it is not made, endorsed or supported by YouTube, and it can stop working whenever YouTube changes. It is new and not built by default; to try it, install with `cargo install quvyta-music --features youtube`.
+
+- qmus does not include, download or install yt-dlp. Install it yourself (from your distribution or from yt-dlp's own page). Without it in your `PATH`, the settings still list YouTube Music, say that yt-dlp is missing, and show the command your package manager installs it with, to run in a terminal; Look again finds it afterwards.
+- Add it in the settings (`ctrl+,`, Accounts, YouTube Music) and choose the browser you are logged in to YouTube with. yt-dlp reads that browser's YouTube login itself; qmus never sees it, and keeps only the browser's name in its accounts file.
+- Everything qmus asks of YouTube goes through yt-dlp, run as a separate program with a time limit. The sound of a track is fetched into qmus's own cache like a server's track (`~/.cache/quvyta/music/stream/`, held to 500 MB), and played by qmus itself.
+- qmus plays what yt-dlp gives it and changes nothing of it. Searching YouTube Music and your own YouTube playlists are not there yet.
 
 ## Keys
 
@@ -73,13 +81,13 @@ qmus plays your Spotify liked songs and playlists through [librespot](https://gi
 | `?` | every key |
 | `q`, `ctrl+q` | quit |
 
-Everything the keys do, the mouse does too: click a track to play it, and use the buttons in the bar below.
+Everything the keys do, the mouse does too: click a track to play it, and use the buttons in the bar below. The volume beside them is a slider: click or drag it to any level, or turn the wheel over it.
 
 ## Network
 
 Once a day at start qmus asks crates.io whether a newer version is out, and says so when one is. The question sends the program's name and version in the `User-Agent` header and nothing else. It is on by default and turned off in the settings, for every Quvyta application at once.
 
-The only other network traffic is to the accounts you add, and only after you add them: your own servers (logging in, listing the music, fetching the tracks you play and their covers, the server's playlists, and the plays you report) and, when built with Spotify, Spotify (its login page in your browser, its Web API for your liked songs, playlists and covers, and its servers for the sound). Without an account, qmus talks to nothing but crates.io.
+The only other network traffic is to the accounts you add, and only after you add them: your own servers (logging in, listing the music, fetching the tracks you play and their covers, the server's playlists, and the plays you report) and Spotify, when you add a Spotify account (its login page in your browser, its Web API for your liked songs, playlists and covers, and its servers for the sound). When built with YouTube Music, qmus itself only fetches the sound and the cover pictures yt-dlp names; yt-dlp, a program of yours, does its own talking to YouTube. Without an account, qmus talks to nothing but crates.io.
 
 ## License
 

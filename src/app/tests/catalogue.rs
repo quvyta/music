@@ -192,10 +192,12 @@ pub(super) fn listed_from(scratch: &Scratch, server: &FakeServer) -> Harness<Mus
 pub(super) fn titles_shown(h: &Harness<Music>) -> Vec<String> {
     let all = ["Aşk İçinde", "Haydi Söyle", "Uzun Yol", "Gece Mavisi", "Sabah Treni"];
     let screen = h.screen();
+    // The player bar names the track heard, on its first row; it is not a row of the table.
+    let bar = bar_row(h);
     screen
         .lines()
         .filter_map(|line| all.iter().find(|title| line.contains(*title)).map(|title| (*title).to_owned()))
-        .filter(|title| !screen.lines().last().is_some_and(|bar| bar.contains(title.as_str())))
+        .filter(|title| !bar.contains(title.as_str()))
         .collect()
 }
 

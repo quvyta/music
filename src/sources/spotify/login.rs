@@ -223,12 +223,22 @@ pub fn refresh(endpoints: &Endpoints, client: &str, refresh: &str) -> Result<Tok
 
 /// Asks the token endpoint with `fields`; `kept` is the refresh token to keep when none comes back.
 fn tokens(endpoints: &Endpoints, fields: &[(&str, &str)], kept: Option<&str>) -> Result<Tokens, SourceError> {
-    let mut answer = super::super::agent()
-        .post(&endpoints.token)
-        .header("Content-Type", "application/x-www-form-urlencoded")
-        .send(form(fields))
-        .map_err(|error| SourceError::Unreachable(reach_of(&error)))?;
-    let status = answer.status().as_u16();
+    let mut tries = 0;
+    let (mut answer, status) = loop {
+        let answer = super::super::agent()
+            .post(&endpoints.token)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .send(form(fields))
+            .map_err(|error| SourceError::Unreachable(reach_of(&error)))?;
+        let status = answer.status().as_u16();
+        let after = answer.headers().get("retry-after").and_then(|after| after.to_str().ok());
+        match super::rate_limited(status, after, tries) {
+            Some(Ok(wait)) => std::thread::sleep(wait),
+            Some(Err(error)) => return Err(error),
+            None => break (answer, status),
+        }
+        tries += 1;
+    };
     let text = answer.body_mut().read_to_string().map_err(|error| SourceError::Unreachable(reach_of(&error)))?;
     match status {
         200..=299 => {}

@@ -38,6 +38,10 @@ pub(crate) struct Meter {
     gain: AtomicU32,
     /// Samples in the ring from before a seek, to be thrown away unheard.
     pub(crate) stale: AtomicUsize,
+    /// The loudest sample the null output took in its last share, after the volume, as the bits
+    /// of an `f32`: what a speaker would have been given.
+    #[cfg(test)]
+    pub(crate) loudest: AtomicU32,
 }
 
 impl Default for Meter {
@@ -49,6 +53,8 @@ impl Default for Meter {
             scope: Scope::default(),
             gain: AtomicU32::new(1.0_f32.to_bits()),
             stale: AtomicUsize::new(0),
+            #[cfg(test)]
+            loudest: AtomicU32::new(0),
         }
     }
 }
@@ -273,6 +279,11 @@ impl NullOutput {
                     return;
                 }
                 fill(&mut out, &mut ring, &meter, &mut fade);
+                #[cfg(test)]
+                {
+                    let loudest = out.iter().fold(0.0_f32, |most, sample| most.max(sample.abs()));
+                    meter.loudest.store(loudest.to_bits(), Ordering::Relaxed);
+                }
                 std::thread::sleep(NULL_STEP);
             }
         });

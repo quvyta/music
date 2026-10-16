@@ -12,10 +12,29 @@ pub mod web;
 use std::net::{SocketAddr, TcpListener};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::time::Duration;
 
 pub use web::Spotify;
 
 use super::{Client, SourceError};
+
+/// The longest qmus waits on its own when Spotify asks it to wait before asking again; a longer
+/// wait is said to the person instead.
+const WAIT_AT_MOST: Duration = Duration::from_secs(15);
+
+/// How many times a request Spotify asked to wait for is sent again.
+const TRIES: usize = 3;
+
+/// What to do about an answer of `status` with the `Retry-After` header `after`: `None` to go on,
+/// a wait before sending it again while `tries` are left, or the error to give.
+pub(crate) fn rate_limited(status: u16, after: Option<&str>, tries: usize) -> Option<Result<Duration, SourceError>> {
+    if status != 429 {
+        return None;
+    }
+    // Spotify names the wait in whole seconds; without a number, a few seconds is the usual wait.
+    let wait = Duration::from_secs(after.and_then(|after| after.trim().parse::<u64>().ok()).unwrap_or(5));
+    if wait <= WAIT_AT_MOST && tries + 1 < TRIES { Some(Ok(wait)) } else { Some(Err(SourceError::Wait(wait))) }
+}
 
 /// Makes the source of a session's sound from its access token.
 type AudioMaker = dyn Fn(&str) -> Result<audio::Audio, SourceError> + Send + Sync;
@@ -96,7 +115,8 @@ impl Setup {
         let tokens = login::exchange(&self.endpoints, &self.client, code, verifier)?;
         let access = tokens.access.clone();
         let spotify = Spotify::new(&self.api, self.endpoints.clone(), &self.client, tokens);
-        spotify.ping()?;
+        // The Premium check is the session's: the Web API, which Spotify rations for the client
+        // id every librespot player shares, is not asked anything to log in.
         let audio = (self.audio)(&access)?;
         Ok(Client::Spotify(spotify.with_audio(audio)))
     }

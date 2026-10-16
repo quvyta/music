@@ -8,11 +8,17 @@ use crate::testing::sine_wav;
 use crate::testing::spotify::{self, CODE};
 
 /// The settings, tall enough for the accounts, on a machine whose Spotify is `server`.
-fn settings_with(scratch: &Scratch, server: &crate::testing::server::FakeServer) -> Harness<Music> {
+fn settings_with(
+    scratch: &Scratch,
+    server: &crate::testing::server::FakeServer,
+    product: &'static str,
+) -> Harness<Music> {
     sine_wav(&scratch.path("served/tone.wav"), 8_000, 1, 0.4, 440.0);
-    let machine =
-        Machine { spotify: Some(spotify::setup(server, &scratch.path("served/tone.wav"))), ..machine(scratch) };
-    let mut h = open_on(machine, &albums(scratch), crate::locales::env(), 110);
+    let machine = Machine {
+        spotify: Some(spotify::setup(server, &scratch.path("served/tone.wav"), product)),
+        ..machine(scratch)
+    };
+    let mut h = open_on(machine, &albums(scratch), crate::locales::test_env(), 110);
     h.resize(110, 60);
     click_icon(&mut h, "settings");
     settle(&mut h);
@@ -45,7 +51,7 @@ fn log_in(h: &mut Harness<Music>, code: &str) {
 fn a_spotify_account_logged_in_with_the_browser_lists_and_plays_its_liked_songs() {
     let scratch = Scratch::new("spotify-add");
     let server = spotify::start("premium");
-    let mut h = settings_with(&scratch, &server);
+    let mut h = settings_with(&scratch, &server, "premium");
     log_in(&mut h, CODE);
     wait_for(&mut h, |music| music.tracks().iter().any(|track| track.title == "Gece Mavisi"));
     assert!(
@@ -72,7 +78,7 @@ fn a_spotify_account_logged_in_with_the_browser_lists_and_plays_its_liked_songs(
 fn an_account_that_is_not_premium_is_said_to_be_one_and_is_not_kept() {
     let scratch = Scratch::new("spotify-free");
     let server = spotify::start("free");
-    let mut h = settings_with(&scratch, &server);
+    let mut h = settings_with(&scratch, &server, "free");
     log_in(&mut h, CODE);
     wait_for(&mut h, |music| music.account_dialog.as_ref().is_some_and(|dialog| dialog.problem.is_some()));
     assert!(h.screen().contains("only Premium accounts play"), "{}", h.screen());
@@ -83,7 +89,7 @@ fn an_account_that_is_not_premium_is_said_to_be_one_and_is_not_kept() {
 fn a_pasted_address_of_another_login_is_said_to_be_wrong() {
     let scratch = Scratch::new("spotify-wrong");
     let server = spotify::start("premium");
-    let mut h = settings_with(&scratch, &server);
+    let mut h = settings_with(&scratch, &server, "premium");
     click_last(&mut h, "Add account");
     settle(&mut h);
     h.click_text("Log in with the browser");
@@ -94,4 +100,21 @@ fn a_pasted_address_of_another_login_is_said_to_be_wrong() {
     settle(&mut h);
     assert!(h.screen().contains("not the address this login ended on"), "{}", h.screen());
     assert!(!server.requests().iter().any(|request| request.path == "/api/token"), "nothing was exchanged");
+}
+
+#[test]
+fn a_rationed_web_api_does_not_stop_the_login_and_the_wait_is_said_on_the_account() {
+    let scratch = Scratch::new("spotify-rationed");
+    let server = spotify::start_rationed("premium");
+    let mut h = settings_with(&scratch, &server, "premium");
+    log_in(&mut h, CODE);
+    wait_for(&mut h, |music| {
+        music.accounts.first().is_some_and(|account| {
+            matches!(music.standing.get(&account.key), Some(crate::app::accounts::Standing::Failed(_)))
+        })
+    });
+    settle(&mut h);
+    let screen = h.screen();
+    assert!(screen.contains("asks qmus to wait 3600 s"), "{screen}");
+    assert!(!screen.contains("Log in to Spotify"), "logged in, the dialog closed:\n{screen}");
 }

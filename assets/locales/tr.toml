@@ -55,6 +55,22 @@ paste-hint = "Yalnızca tarayıcı başka bir makinedeyse: vardığı adresi yap
 pasted-wrong = "Bu, bu girişin vardığı adres değil."
 busy = "Bu bilgisayarda şu anda başka bir program Spotify'a giriş yapıyor; biraz sonra yeniden dene."
 
+[music.youtube]
+add-title = "YouTube Music ekle"
+title = "YouTube Music"
+text = "Kendi kurduğun yt-dlp ile YouTube Music; resmî değildir, YouTube'un yaptığı ya da desteklediği bir şey değildir. Beğendiğin müzikler qmus'ta çalar."
+how = "yt-dlp YouTube girişini seçtiğin tarayıcıdan okur. qmus onu hiç görmez, yalnızca tarayıcının adını tutar."
+browser = "YouTube'a giriş yaptığın tarayıcı"
+missing = "Bu bilgisayarda kurulu olmayan yt-dlp gerekiyor. qmus onu kendisi kurmaz."
+how-install = "Nasıl kurulur"
+install-title = "yt-dlp'yi kur"
+install-text = "Paket yöneticin yt-dlp'yi bu komutla kurar. Komutu bir terminalde çalıştır, sonra yeniden bak."
+install-elsewhere = "Burada qmus'un tanıdığı bir paket yöneticisi bulunamadı. yt-dlp'nin kendi sayfası nasıl kurulacağını anlatıyor: https://github.com/yt-dlp/yt-dlp/wiki/Installation"
+look-again = "Yeniden bak"
+close = "Kapat"
+found = "yt-dlp bulundu: YouTube Music eklenebilir."
+still-missing = "yt-dlp hâlâ bulunamadı."
+
 [music.later]
 title = "Opus dosyaları henüz çalınamıyor"
 text = "qmus bu dosyaları gizlemiyor, listede gösteriyor; çalma desteği sonraki bir sürümde gelecek."
@@ -133,6 +149,7 @@ rescan-text = "qmus açıkken eklenen ya da değişen müzik için."
 rescan-button = "Yeniden oku"
 
 [music.accounts]
+wait = "Hizmet qmus'tan yeniden sormadan önce {seconds} sn beklemesini istiyor; o zaman yeniden dene."
 premium = "Spotify yalnızca Premium hesapların başka oynatıcılarda çalmasına izin veriyor."
 scrobble = "Dinlenenleri bildir"
 title = "Hesaplar"

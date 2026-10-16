@@ -6,7 +6,7 @@ homepage = "https://quvyta.com/qmus/"
 readme = "README.md"
 keywords = ["tui", "terminal", "music", "player", "audio"]
 categories = ["command-line-utilities", "multimedia::audio"]
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 rust-version = "1.95"
 license = "MIT"
@@ -44,9 +44,11 @@ percent-encoding = "2"
 zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io", "p2p"] }
 
 [features]
-default = []
-# Spotify Premium through librespot, not built by default until it has been tried on a real account;
-# without it qmus plays files and the person's own servers.
+default = ["spotify"]
+# Spotify Premium through librespot; without it qmus plays files and the person's own servers.
+# YouTube Music through the person's own yt-dlp, not offered by default until it has been tried
+# on a real account.
+youtube = []
 spotify = ["dep:librespot-core", "dep:librespot-audio", "dep:librespot-metadata", "dep:tokio", "dep:vergen"]
 
 [dev-dependencies]

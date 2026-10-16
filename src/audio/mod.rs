@@ -73,6 +73,18 @@ pub enum Opener {
         /// The file ending the track would have, when known: it helps tell formats apart.
         ending: Option<String>,
     },
+    /// A track fetched into qmus's cache from an address found only when it is opened, as one a
+    /// YouTube Music track's sound is: such an address soon runs out.
+    Resolved {
+        /// The cache it is fetched into.
+        cache: StreamCache,
+        /// The name the cache knows it by.
+        key: String,
+        /// Finds the address; not asked when the track is in the cache whole.
+        resolve: Resolver,
+        /// The file ending the track would have, when known.
+        ending: Option<String>,
+    },
     /// A Spotify track, its sound through librespot.
     Spotify {
         /// What gives the sound.
@@ -93,6 +105,7 @@ impl std::fmt::Debug for Opener {
                 f.debug_struct("Stream").field("key", key).field("ending", ending).finish_non_exhaustive()
             }
             Self::Spotify { id, .. } => f.debug_struct("Spotify").field("id", id).finish_non_exhaustive(),
+            Self::Resolved { key, .. } => f.debug_struct("Resolved").field("key", key).finish_non_exhaustive(),
             Self::Unplayable(why) => f.debug_tuple("Unplayable").field(why).finish(),
         }
     }
@@ -106,12 +119,22 @@ impl Opener {
             Self::Stream { cache, key, address, ending } => {
                 Decoder::open_source(cache.open(key, address)?, ending.as_deref())
             }
+            Self::Resolved { cache, key, resolve, ending } => {
+                let source = match cache.kept(key) {
+                    Some(kept) => kept,
+                    None => cache.open(key, &resolve()?)?,
+                };
+                Decoder::open_source(source, ending.as_deref())
+            }
             // Spotify's files are Ogg Vorbis.
             Self::Spotify { audio, id } => Decoder::open_source(audio.open(id)?, Some("ogg")),
             Self::Unplayable(why) => Err(why.clone()),
         }
     }
 }
+
+/// Finds the address a track's sound is fetched from, or says why it cannot.
+pub type Resolver = Arc<dyn Fn() -> Result<String, String> + Send + Sync>;
 
 /// A track as the player takes it: where it is played from, which the status names, and how its
 /// sound is reached.
@@ -333,6 +356,12 @@ impl Player {
     #[cfg(test)]
     pub(crate) fn gain(&self) -> f32 {
         self.shared.meter.gain()
+    }
+
+    /// The loudest sample the null output last gave out, after the volume.
+    #[cfg(test)]
+    pub(crate) fn loudest_out(&self) -> f32 {
+        f32::from_bits(self.shared.meter.loudest.load(Ordering::Relaxed))
     }
 
     /// Fills `out` with the last of the sound that went out, folded to one channel, the oldest

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use qframe::prelude::*;
 use qframe::widgets::{
-    BigText, Column, ColumnWidth, EmptyState, HelpLayer, IconButton, Image, LevelBars, Panel, SeekBar, Table,
+    BigText, Column, ColumnWidth, EmptyState, HelpLayer, IconButton, Image, LevelBars, Panel, SeekBar, Slider, Table,
     TableCell, TableRow,
 };
 
@@ -38,13 +38,12 @@ const VISUALIZER: u16 = 8;
 /// name and both times still fit.
 const WIDE: u16 = 60;
 
-/// From this width the player bar takes one row; below it how far the track has got takes a row
-/// of its own, so the track's name keeps its room.
-const ONE_ROW: u16 = 80;
+/// From this width the player bar takes one row; below it how far the track has got, shuffle,
+/// repeat and the volume take a row of their own, so the track's name keeps its room.
+const ONE_ROW: u16 = 110;
 
-/// From this width the player bar also has shuffle, repeat and the volume; below it their keys
-/// still work.
-const FULL: u16 = 100;
+/// The cells of the volume slider: the level, and a rail long enough to aim at with the mouse.
+const VOLUME: u16 = 11;
 
 /// The rows of `tracks`, made once when the folder is read rather than on every frame.
 pub(super) fn rows(tracks: &[Track], marked: bool, unreachable: impl Fn(&Track) -> bool) -> Arc<[TableRow]> {
@@ -318,10 +317,8 @@ impl Music {
                 self.visualizer(ui);
                 self.controls(ui);
                 self.progress(ui, Length::Cells(PROGRESS));
-                if width >= FULL {
-                    self.order(ui);
-                    self.volume(ui);
-                }
+                self.order(ui);
+                self.volume(ui);
             })
             .gap(1)
             .padding(Padding::symmetric(0, 1))
@@ -336,8 +333,22 @@ impl Music {
                 })
                 .gap(1)
                 .fill_width();
-                if self.current().is_some() {
-                    ui.row(|ui| self.progress(ui, Length::Fill(1))).gap(1).fill_width();
+                // Below this width the track's times would not fit beside the volume; its keys still work.
+                let volume = width >= WIDE;
+                if self.current().is_some() || volume {
+                    ui.row(|ui| {
+                        if self.current().is_some() {
+                            self.progress(ui, Length::Fill(1));
+                        } else {
+                            ui.add(Text::new("")).fill_width();
+                        }
+                        if volume {
+                            self.order(ui);
+                            self.volume(ui);
+                        }
+                    })
+                    .gap(1)
+                    .fill_width();
                 }
             })
             .padding(Padding::symmetric(0, 1))
@@ -450,7 +461,8 @@ impl Music {
             .id("repeat");
     }
 
-    /// The volume: a button that silences the sound and brings it back, and the level.
+    /// The volume: a button that silences the sound and brings it back, and a slider that a click,
+    /// a drag or the wheel moves to any level between.
     fn volume(&self, ui: &mut View<'_, Msg>) {
         let (icon, label) = if self.muted {
             ("media-muted", t!("music.player.unmute"))
@@ -459,7 +471,9 @@ impl Music {
         };
         ui.add(IconButton::new(icon).tooltip(label).on_press(Msg::Mute)).id("mute");
         let level = if self.muted { 0 } else { self.volume };
-        ui.add(Text::new(level.to_string()).role("secondary")).width(Length::Cells(3)).id("volume");
+        ui.add(Slider::new(f64::from(level)).step(f64::from(super::VOLUME_STEP)).on_change(Msg::VolumeTo))
+            .width(Length::Cells(VOLUME))
+            .id("volume");
     }
 
     /// The key overview. qmus's own keys come from the keymap under the application's group, so a

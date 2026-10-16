@@ -24,15 +24,28 @@ pub const LOCALES: &[(&str, &str)] = &[
 /// The compiled-in keymap: qmus's own keys, and `q` beside `ctrl+q` for quitting.
 pub const KEYMAP: (&str, &str) = ("keymap.toml", include_str!("../assets/keymap.toml"));
 
-/// The environment as the runtime loads it, used by the tests: the languages and the keymap.
+/// The environment as the runtime loads it: the languages and the keymap.
 #[must_use]
 pub fn env() -> Env {
-    let dirs = AssetDirs {
+    Env::load(&assets()).expect("the compiled-in assets are readable")
+}
+
+/// The same files on a terminal of 24-bit colour with nothing else set, read from nowhere in the
+/// process environment, so a test draws the same colours and words wherever it runs.
+#[cfg(test)]
+#[must_use]
+pub(crate) fn test_env() -> Env {
+    Env::load_with(&assets(), |name| (name == "COLORTERM").then(|| "truecolor".to_owned()))
+        .expect("the compiled-in assets are readable")
+}
+
+/// The compiled-in languages and keymap.
+fn assets() -> AssetDirs {
+    AssetDirs {
         locale_sources: LOCALES.iter().map(|(file, text)| ((*file).to_owned(), (*text).to_owned())).collect(),
         keymap_source: Some((KEYMAP.0.to_owned(), KEYMAP.1.to_owned())),
         ..AssetDirs::default()
-    };
-    Env::load(&dirs).expect("the compiled-in assets are readable")
+    }
 }
 
 /// The languages qmus speaks, for resolving the shared Quvyta language and for the command line

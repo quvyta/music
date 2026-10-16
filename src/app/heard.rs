@@ -27,8 +27,11 @@ impl Music {
     pub(super) fn read_remote_art(&mut self) -> Command<Msg> {
         let Some(track) = self.current() else { return Command::none() };
         let Location::Remote { source, .. } = &track.location else { return Command::none() };
-        // The account stands in for the folder, so two accounts' albums of one name are two.
-        let key = (PathBuf::from(format!("account:{}", source.0)), track.album.clone());
+        // The account stands in for the folder, so two accounts' albums of one name are two; a
+        // track of no album has a cover of its own.
+        let Location::Remote { id, .. } = &track.location else { return Command::none() };
+        let album = if track.album.is_empty() { format!("track:{id}") } else { track.album.clone() };
+        let key = (PathBuf::from(format!("account:{}", source.0)), album);
         let (cover, client) = (self.remote_covers.get(&track.location).cloned(), self.client_of(&source.0));
         if self.art.as_ref().is_some_and(|shown| shown.key == key) {
             return Command::none();

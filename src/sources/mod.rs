@@ -17,6 +17,7 @@ pub mod cache;
 pub mod jellyfin;
 pub mod spotify;
 pub mod subsonic;
+pub mod youtube;
 
 /// An account logged in to, of whichever kind: what the rest of qmus asks things of.
 #[derive(Debug, Clone)]
@@ -27,6 +28,8 @@ pub enum Client {
     Jellyfin(jellyfin::Jellyfin),
     /// A Spotify Premium account.
     Spotify(spotify::Spotify),
+    /// YouTube Music, through the person's own yt-dlp.
+    YouTube(youtube::YtDlp),
 }
 
 impl Client {
@@ -40,6 +43,7 @@ impl Client {
             Self::Subsonic(server) => server.ping(),
             Self::Jellyfin(server) => server.ping(),
             Self::Spotify(account) => account.ping(),
+            Self::YouTube(ytdlp) => ytdlp.version().map(|_| ()),
         }
     }
 
@@ -53,6 +57,7 @@ impl Client {
             Self::Subsonic(server) => server.catalogue(),
             Self::Jellyfin(server) => server.catalogue(),
             Self::Spotify(account) => account.catalogue(),
+            Self::YouTube(ytdlp) => ytdlp.liked(),
         }
     }
 
@@ -63,7 +68,17 @@ impl Client {
         match self {
             Self::Subsonic(server) => Some(server.stream_address(id)),
             Self::Jellyfin(server) => Some(server.stream_address(id)),
-            Self::Spotify(_) => None,
+            Self::Spotify(_) | Self::YouTube(_) => None,
+        }
+    }
+
+    /// A finder of the address the track `id`'s sound is fetched from, for a service whose
+    /// addresses soon run out and are found only when the track is opened: YouTube Music.
+    #[must_use]
+    pub fn resolver(&self, id: &str) -> Option<crate::audio::Resolver> {
+        match self {
+            Self::YouTube(ytdlp) => Some(ytdlp.resolver(id)),
+            Self::Subsonic(_) | Self::Jellyfin(_) | Self::Spotify(_) => None,
         }
     }
 
@@ -73,7 +88,7 @@ impl Client {
     pub fn opener(&self, id: &str) -> Option<crate::audio::Opener> {
         match self {
             Self::Spotify(account) => account.opener(id),
-            Self::Subsonic(_) | Self::Jellyfin(_) => None,
+            Self::Subsonic(_) | Self::Jellyfin(_) | Self::YouTube(_) => None,
         }
     }
 
@@ -88,6 +103,8 @@ impl Client {
             Self::Jellyfin(server) => server.cover(id, size),
             // Spotify names a cover by the address of its picture, already of a size.
             Self::Spotify(account) => account.cover(id),
+            // YouTube names a cover by the address of its picture too.
+            Self::YouTube(ytdlp) => ytdlp.cover(id),
         }
     }
 
@@ -101,6 +118,8 @@ impl Client {
             Self::Subsonic(server) => server.playlists(),
             Self::Jellyfin(server) => server.playlists(),
             Self::Spotify(account) => account.playlists(),
+            // The person's own YouTube playlists are not read yet.
+            Self::YouTube(_) => Ok(Vec::new()),
         }
     }
 
@@ -114,6 +133,7 @@ impl Client {
             Self::Subsonic(server) => server.playlist(id),
             Self::Jellyfin(server) => server.playlist(id),
             Self::Spotify(account) => account.playlist(id),
+            Self::YouTube(_) => Err(SourceError::NotFound),
         }
     }
 
@@ -126,8 +146,8 @@ impl Client {
         match self {
             Self::Subsonic(server) => server.scrobble(id, done),
             Self::Jellyfin(server) => server.scrobble(id, done),
-            // Spotify's history takes no word from another player.
-            Self::Spotify(_) => Ok(()),
+            // Neither history takes word from another player.
+            Self::Spotify(_) | Self::YouTube(_) => Ok(()),
         }
     }
 }
@@ -148,6 +168,8 @@ pub enum SourceError {
     /// The account is not one the service lets play in another player, as a Spotify account that
     /// is not Premium.
     Premium,
+    /// The service asks to be asked again only after this long: too many requests.
+    Wait(Duration),
 }
 
 /// Why a service could not be reached.

@@ -2,6 +2,18 @@
 
 Every release of quvyta-music, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.2.1 - 2026-10-16
+
+### Added
+
+- Not built by default yet (`cargo install quvyta-music --features youtube`): YouTube Music through the yt-dlp you installed yourself, unofficial. Choose the browser you are logged in to YouTube with; yt-dlp reads its login, qmus never sees it. Your liked music is listed beside your files and played by qmus itself. Without yt-dlp the settings still list YouTube Music, say that yt-dlp is missing and show the command your package manager installs it with; qmus installs nothing itself, and Look again finds it once you have.
+
+### Changed
+
+- Spotify Premium is built by default now that it has played on a real account: log in from the settings' Accounts section. `cargo install quvyta-music --no-default-features` leaves it out.
+- The volume in the player bar is a slider: a click or a drag sets any level, and the wheel over it moves it a step, as `+` and `-` do. Before, the mouse had only the mute button, so it could make the sound only whole or silent.
+- On a terminal narrower than 110 columns the player bar takes two rows, and the second keeps the volume, shuffle and repeat, which below 100 columns used to be left out.
+
 ## 0.2.0 - 2026-10-04
 
 ### Added

@@ -26,6 +26,7 @@ mod screen;
 mod settings;
 mod spotify;
 mod visualizer;
+mod youtube;
 
 /// Long enough for background work to come back.
 const MOMENT: Duration = Duration::from_millis(300);
@@ -56,12 +57,14 @@ fn machine(scratch: &Scratch) -> Machine {
         listings: Some(scratch.path("cache/sources")),
         streams: Some(scratch.path("cache/stream")),
         spotify: None,
+        ytdlp: None,
+        youtube_search: None,
     }
 }
 
 /// The screen showing `folder`, in English with Unicode glyphs, 100 × 20.
 fn open(scratch: &Scratch, folder: &Path) -> Harness<Music> {
-    open_on(machine(scratch), folder, crate::locales::env(), 100)
+    open_on(machine(scratch), folder, crate::locales::test_env(), 100)
 }
 
 /// The screen on `machine` showing `folder`, with `env`, `width` × 20.
@@ -97,6 +100,15 @@ fn find(h: &Harness<Music>, text: &str) -> Option<(i32, i32)> {
         let column = line[..at].chars().count();
         Some((i32::try_from(column).ok()?, i32::try_from(row).ok()?))
     })
+}
+
+/// The player bar's first row, the one with the visualizer, the buttons and the track heard: the
+/// screen's last line on a wide terminal, the one above it when the bar takes two rows.
+fn bar_row(h: &Harness<Music>) -> String {
+    let previous = h.env().icons().glyph("media-previous").into_owned();
+    let screen = h.screen();
+    let row = screen.lines().rev().take(2).find(|line| line.contains(&previous));
+    row.unwrap_or_else(|| panic!("no player bar:\n{screen}")).to_owned()
 }
 
 /// Clicks the icon button drawn with the glyph `key`.

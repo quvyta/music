@@ -55,6 +55,22 @@ paste-hint = "Only when the browser is on another machine: paste the address it 
 pasted-wrong = "That is not the address this login ended on."
 busy = "Another program is logging in to Spotify on this computer right now; try again in a moment."
 
+[music.youtube]
+add-title = "Add YouTube Music"
+title = "YouTube Music"
+text = "YouTube Music through yt-dlp, which you installed yourself; unofficial, and not made or supported by YouTube. Your liked music, played by qmus."
+how = "yt-dlp reads your YouTube login from the browser you choose. qmus never sees it and keeps only the browser's name."
+browser = "The browser you are logged in to YouTube with"
+missing = "Needs yt-dlp, which is not installed on this computer. qmus does not install it itself."
+how-install = "How to install"
+install-title = "Install yt-dlp"
+install-text = "Your package manager installs yt-dlp with this command. Run it in a terminal, then look again."
+install-elsewhere = "No package manager qmus knows was found here. yt-dlp's own page says how to install it: https://github.com/yt-dlp/yt-dlp/wiki/Installation"
+look-again = "Look again"
+close = "Close"
+found = "yt-dlp found: YouTube Music can be added."
+still-missing = "yt-dlp is still not found."
+
 [music.later]
 title = "Opus files cannot be played yet"
 text = "qmus shows them instead of hiding them; playing them comes in a later version."
@@ -133,6 +149,7 @@ rescan-text = "For music added or changed while qmus was open."
 rescan-button = "Read again"
 
 [music.accounts]
+wait = "The service asks qmus to wait {seconds} s before asking again; try again then."
 premium = "Spotify lets only Premium accounts play in another player."
 scrobble = "Report plays"
 title = "Accounts"

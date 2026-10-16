@@ -17,7 +17,7 @@ fn a_login_brought_back_by_the_browser_becomes_an_account_with_its_sound() {
     let scratch = Scratch::new("spotify-setup");
     sine_wav(&scratch.path("tone.wav"), 8_000, 1, 0.2, 440.0);
     let server = spotify::start("premium");
-    let setup = spotify::setup(&server, &scratch.path("tone.wav"));
+    let setup = spotify::setup(&server, &scratch.path("tone.wav"), "premium");
     let listener = setup.listen().expect("a free port");
     let port = listener.local_addr().expect("the address").port();
     let pkce = login::Pkce::new().expect("a secret");
@@ -33,11 +33,12 @@ fn a_login_brought_back_by_the_browser_becomes_an_account_with_its_sound() {
 }
 
 #[test]
-fn an_account_that_is_not_premium_is_turned_away_before_any_session_is_made() {
+fn an_account_that_is_not_premium_is_turned_away_by_the_session_and_the_web_api_is_not_asked() {
     let scratch = Scratch::new("spotify-free");
     let server = spotify::start("free");
-    let mut setup = spotify::setup(&server, &scratch.path("none.wav"));
-    setup.audio = std::sync::Arc::new(|_| panic!("no session is made for an account that cannot play"));
+    let setup = spotify::setup(&server, &scratch.path("none.wav"), "free");
     let pkce = login::Pkce::new().expect("a secret");
     assert_eq!(setup.finish(CODE, &pkce.verifier).err(), Some(SourceError::Premium));
+    let asked: Vec<String> = server.requests().into_iter().map(|request| request.path).collect();
+    assert_eq!(asked, ["/api/token"], "logging in asks only for the tokens");
 }

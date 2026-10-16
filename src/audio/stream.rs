@@ -55,6 +55,15 @@ impl StreamCache {
         self
     }
 
+    /// The track known as `key` when it was fetched whole before, to be read from its start.
+    #[must_use]
+    pub fn kept(&self, key: &str) -> Option<Box<dyn MediaSource>> {
+        let file = File::open(self.folder.join(name_of(key))).ok()?;
+        // Played again: the cache's own order of age follows what is heard, not what was fetched.
+        let _ = file.set_modified(SystemTime::now());
+        Some(Box::new(file))
+    }
+
     /// The track known as `key`, to be read from its start: from the cache when it was fetched
     /// whole before, else fetched from `address` as it is read.
     ///
@@ -62,12 +71,10 @@ impl StreamCache {
     ///
     /// Says why when the cache folder cannot be written or the server does not send the track.
     pub fn open(&self, key: &str, address: &str) -> Result<Box<dyn MediaSource>, String> {
-        let whole = self.folder.join(name_of(key));
-        if let Ok(file) = File::open(&whole) {
-            // Played again: the cache's own order of age follows what is heard, not what was fetched.
-            let _ = file.set_modified(SystemTime::now());
-            return Ok(Box::new(file));
+        if let Some(kept) = self.kept(key) {
+            return Ok(kept);
         }
+        let whole = self.folder.join(name_of(key));
         fs::create_dir_all(&self.folder).map_err(|error| error.to_string())?;
         self.trim();
         let partial = whole.with_extension(PARTIAL);

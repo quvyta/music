@@ -87,12 +87,19 @@ pub struct Machine {
     pub streams: Option<PathBuf>,
     /// How Spotify is logged in to and played; `None` offers no Spotify.
     pub spotify: Option<crate::sources::spotify::Setup>,
+    /// The person's own yt-dlp, when it is installed.
+    pub ytdlp: Option<PathBuf>,
+    /// Where yt-dlp and a package manager are looked for, the `PATH` qmus started with; `None`
+    /// offers no YouTube Music at all, as when qmus is built without it. Without yt-dlp the
+    /// settings still offer YouTube Music, say that yt-dlp is missing and show how to install it.
+    pub youtube_search: Option<std::ffi::OsString>,
 }
 
 impl Machine {
     /// This machine, as the environment describes it, with the sound on its default device.
     #[must_use]
     pub fn here() -> Self {
+        let youtube_search = if cfg!(feature = "youtube") { std::env::var_os("PATH") } else { None };
         Self {
             config: Ecosystem::QUVYTA.config_dir(),
             updates: UpdateFolders::here(),
@@ -105,6 +112,8 @@ impl Machine {
             listings: Ecosystem::QUVYTA.cache_dir(APP).map(|cache| cache.join("sources")),
             streams: Ecosystem::QUVYTA.cache_dir(APP).map(|cache| cache.join("stream")),
             spotify: crate::sources::spotify::Setup::here(),
+            ytdlp: youtube_search.as_deref().and_then(crate::sources::youtube::find_in),
+            youtube_search,
         }
     }
 
@@ -331,6 +340,8 @@ pub struct Music {
     standing: HashMap<String, accounts::Standing>,
     /// The account dialog, while it is open.
     account_dialog: Option<accounts::Dialog>,
+    /// Whether the window saying how to install yt-dlp is open.
+    ytdlp_help: bool,
     /// The account the person is asked about removing.
     removing: Option<String>,
     /// How many tries of an account have been made, to tell a late answer from the latest.
@@ -377,6 +388,8 @@ pub enum Msg {
     Repeat,
     /// The sound gets louder (`true`) or quieter by a step.
     Volume(bool),
+    /// The volume slider moved to this level, out of 100.
+    VolumeTo(f64),
     /// The sound is silenced, or comes back at the volume it had.
     Mute,
     /// Time to read the player again.
@@ -493,6 +506,7 @@ impl Music {
             logins: crate::accounts::Logins::default(),
             standing: HashMap::new(),
             account_dialog: None,
+            ytdlp_help: false,
             removing: None,
             tries: 0,
         }
@@ -711,6 +725,14 @@ impl Music {
             return Ok(opener);
         }
         let Some(folder) = &self.machine.streams else { return Err(t!("music.remote.gone")) };
+        if let Some(resolve) = client.resolver(id) {
+            return Ok(Opener::Resolved {
+                cache: StreamCache::new(folder.clone(), STREAM_CACHE),
+                key: format!("{key}/{id}"),
+                resolve,
+                ending: Some("m4a".to_owned()),
+            });
+        }
         Ok(Opener::Stream {
             cache: StreamCache::new(folder.clone(), STREAM_CACHE),
             key: format!("{key}/{id}"),
@@ -1015,6 +1037,11 @@ impl Music {
                 };
                 self.set_volume(level);
             }
+            Msg::VolumeTo(level) => {
+                // Between 0 and 100 after the clamp, so the cast loses nothing.
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                self.set_volume(level.clamp(0.0, 100.0).round() as u8);
+            }
             Msg::Mute => {
                 if self.muted {
                     self.set_volume(self.volume);
@@ -1030,6 +1057,9 @@ impl Music {
             }
             Msg::Settings(open) => {
                 self.settings_open = open;
+                if open {
+                    self.look_for_ytdlp();
+                }
                 if !open {
                     return Command::focus(view::TRACKS);
                 }

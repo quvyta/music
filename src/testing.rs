@@ -4,6 +4,7 @@
 pub mod jellyfin;
 pub mod server;
 pub mod spotify;
+pub mod ytdlp;
 
 use std::fs;
 use std::path::{Path, PathBuf};

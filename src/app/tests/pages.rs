@@ -5,7 +5,7 @@ use super::*;
 /// The screen showing `folder` at `width` × 24.
 fn open_wide(scratch: &Scratch, folder: &Path, width: u16) -> Harness<Music> {
     let opening = Opening::new(machine(scratch), folder.to_path_buf());
-    let mut h = Harness::with_env(opening.music, crate::locales::env(), width, 24);
+    let mut h = Harness::with_env(opening.music, crate::locales::test_env(), width, 24);
     h.set_locale("en").set_glyph_mode(GlyphMode::Unicode).set_reduced_motion(true);
     settle(&mut h);
     h

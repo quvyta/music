@@ -13,7 +13,7 @@ fn the_update_question_is_asked_only_while_the_quvyta_switch_is_on() {
     let quiet = Scratch::new("settings-quiet");
     let machine = machine(&quiet);
     Ecosystem::QUVYTA.set_update_notice_in(machine.config.as_ref().expect("folder"), false).expect("saved");
-    let h = open_on(machine, &albums(&quiet), crate::locales::env(), 100);
+    let h = open_on(machine, &albums(&quiet), crate::locales::test_env(), 100);
     assert!(h.update_checks().is_empty(), "nothing is asked once it is off");
 }
 
@@ -29,7 +29,7 @@ fn the_update_switch_is_shown_only_where_it_can_be_kept() {
     assert!(h.screen().contains("Say when an update is out"), "{}", h.screen());
     let bare = Scratch::new("settings-bare");
     let machine = Machine { updates: None, ..machine(&bare) };
-    let mut h = open_on(machine, &albums(&bare), crate::locales::env(), 100);
+    let mut h = open_on(machine, &albums(&bare), crate::locales::test_env(), 100);
     h.resize(100, 60);
     click_icon(&mut h, "settings");
     settle(&mut h);
@@ -147,7 +147,7 @@ fn a_visualizer_turned_off_leaves_the_player_bar_without_it() {
     let scratch = Scratch::new("settings-off");
     let folder = albums(&scratch);
     let mut h = open(&scratch, &folder);
-    let bar = |h: &Harness<Music>| h.screen().lines().last().expect("the bar").to_owned();
+    let bar = bar_row;
     assert!(bar(&h).contains("▁▁▁▁"), "the visualizer rests in the bar:\n{}", h.screen());
     h.resize(100, 60);
     click_icon(&mut h, "settings");

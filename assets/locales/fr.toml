@@ -166,6 +166,7 @@ rescan-text = "Pour la musique ajoutée ou modifiée pendant que qmus était ouv
 rescan-button = "Relire"
 
 [music.accounts]
+wait = "Le service demande à qmus d'attendre {seconds} s avant de réessayer ; réessayez ensuite."
 premium = "Spotify ne permet qu'aux comptes Premium de lire dans un autre lecteur."
 scrobble = "Signaler les lectures"
 title = "Comptes"
@@ -228,3 +229,19 @@ paste = "Adresse sur laquelle le navigateur s'est arrêté"
 paste-hint = "Seulement lorsque le navigateur se trouve sur une autre machine : collez l'adresse où il s'est arrêté, puis appuyez sur Entrée."
 pasted-wrong = "Ce n'est pas l'adresse où cette connexion s'est arrêtée."
 busy = "Un autre programme est en train de se connecter à Spotify sur cet ordinateur ; réessayez dans un instant."
+
+[music.youtube]
+add-title = "Ajouter YouTube Music"
+title = "YouTube Music"
+text = "YouTube Music via yt-dlp, que vous avez installé vous-même ; non officiel, et ni créé ni pris en charge par YouTube. Vos musiques aimées, lues par qmus."
+how = "yt-dlp lit votre connexion YouTube à partir du navigateur que vous choisissez. qmus ne la voit jamais et ne conserve que le nom du navigateur."
+browser = "Le navigateur avec lequel vous êtes connecté à YouTube"
+missing = "Nécessite yt-dlp, qui n'est pas installé sur cet ordinateur. qmus ne l'installe pas lui-même."
+how-install = "Comment installer"
+install-title = "Installer yt-dlp"
+install-text = "Votre gestionnaire de paquets installe yt-dlp avec cette commande. Exécutez-la dans un terminal, puis vérifiez à nouveau."
+install-elsewhere = "Aucun gestionnaire de paquets connu de qmus n'a été trouvé ici. La page de yt-dlp explique comment l'installer : https://github.com/yt-dlp/yt-dlp/wiki/Installation"
+look-again = "Vérifier à nouveau"
+close = "Fermer"
+found = "yt-dlp trouvé : YouTube Music peut être ajouté."
+still-missing = "yt-dlp est toujours introuvable."

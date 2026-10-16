@@ -166,6 +166,7 @@ rescan-text = "Für Musik, die hinzugefügt oder geändert wurde, während qmus 
 rescan-button = "Erneut einlesen"
 
 [music.accounts]
+wait = "Der Dienst bittet qmus, {seconds} s zu warten, bevor es erneut fragt; versuche es danach erneut."
 premium = "Spotify lässt nur Premium-Konten in anderen Playern abspielen."
 scrobble = "Wiedergaben melden"
 title = "Konten"
@@ -228,3 +229,19 @@ paste = "Die Adresse, auf der der Browser endete"
 paste-hint = "Nur wenn der Browser auf einem anderen Rechner läuft: füge die Adresse ein, auf der er endete, und drücke Enter."
 pasted-wrong = "Das ist nicht die Adresse, bei der diese Anmeldung endete."
 busy = "Ein anderes Programm meldet sich gerade bei Spotify auf diesem Computer an; versuche es gleich noch einmal."
+
+[music.youtube]
+add-title = "YouTube Music hinzufügen"
+title = "YouTube Music"
+text = "YouTube Music über yt-dlp, das du selbst installiert hast; inoffiziell und nicht von YouTube erstellt oder unterstützt. Deine gelikten Titel, abgespielt von qmus."
+how = "yt-dlp liest deine YouTube-Anmeldung aus dem Browser, den du wählst. qmus sieht sie nie und speichert nur den Namen des Browsers."
+browser = "Der Browser, mit dem du bei YouTube angemeldet bist"
+missing = "Es wird yt-dlp benötigt, das auf diesem Computer nicht installiert ist. qmus installiert es nicht selbst."
+how-install = "Wie installieren"
+install-title = "yt-dlp installieren"
+install-text = "Dein Paketmanager installiert yt-dlp mit diesem Befehl. Führe ihn in einem Terminal aus und schau dann noch einmal nach."
+install-elsewhere = "Kein von qmus bekannter Paketmanager wurde hier gefunden. Die eigene Seite von yt-dlp erklärt, wie man es installiert: https://github.com/yt-dlp/yt-dlp/wiki/Installation"
+look-again = "Noch einmal schauen"
+close = "Schließen"
+found = "yt-dlp gefunden: YouTube Music kann hinzugefügt werden."
+still-missing = "yt-dlp wird noch nicht gefunden."

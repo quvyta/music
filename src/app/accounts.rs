@@ -6,7 +6,7 @@
 
 use qframe::prelude::*;
 use qframe::widgets::{
-    Button, Field, Modal, Segmented, SettingRow, SettingsRows, Switch, Text as Words, TextInput, Toast,
+    Button, CopyValue, Field, Modal, Segmented, SettingRow, SettingsRows, Switch, Text as Words, TextInput, Toast,
 };
 
 use super::{Msg, Music};
@@ -14,10 +14,14 @@ use crate::accounts::{self, Account, Kind, Login};
 use crate::sources::Client;
 use crate::sources::jellyfin::Jellyfin;
 use crate::sources::subsonic::{Auth, Subsonic};
+use crate::sources::youtube::{BROWSERS, YtDlp};
 use crate::sources::{Reach, SourceError};
 
 /// The first field of the account dialog, which has the focus when it opens.
 const FIRST: &str = "account-first";
+
+/// The browsers of [`BROWSERS`] as people know them.
+const BROWSER_NAMES: [&str; 7] = ["Firefox", "Chrome", "Chromium", "Brave", "Edge", "Vivaldi", "Opera"];
 
 /// The account dialog's width: room for a long address.
 const DIALOG: u16 = 64;
@@ -58,6 +62,8 @@ pub(super) struct Dialog {
     pub(super) trying: Option<u64>,
     /// The browser login under way, for Spotify.
     pub(super) browser: Option<BrowserLogin>,
+    /// The browser whose YouTube login yt-dlp reads, a place in [`BROWSERS`], for YouTube Music.
+    pub(super) youtube_browser: usize,
 }
 
 /// A login in the person's browser, under way.
@@ -98,6 +104,8 @@ pub enum AccountMsg {
     Secret(String),
     /// The address the browser ended on, pasted.
     Pasted(String),
+    /// The browser at this place of [`BROWSERS`] is chosen for YouTube Music.
+    Browser(usize),
     /// The pasted address is used to log in.
     PasteDone,
     /// The dialog's values are tried against the service.
@@ -112,12 +120,34 @@ pub enum AccountMsg {
     Remove,
     /// Reporting plays to the account at this place is turned on or off.
     Scrobble(usize, bool),
+    /// The window saying how to install yt-dlp opens or closes.
+    YtDlpHelp(bool),
+    /// yt-dlp is looked for again, after the person installed it.
+    YtDlpLook,
 }
 
 impl Music {
+    /// Looks for the person's yt-dlp again where it is looked for, unless it was found already or
+    /// YouTube Music is not offered at all.
+    pub(super) fn look_for_ytdlp(&mut self) {
+        if self.machine.ytdlp.is_none() {
+            self.machine.ytdlp = self.machine.youtube_search.as_deref().and_then(crate::sources::youtube::find_in);
+        }
+    }
+
     /// Applies a change of the accounts part.
     pub(super) fn account_msg(&mut self, msg: AccountMsg) -> Command<Msg> {
         match msg {
+            AccountMsg::YtDlpHelp(open) => self.ytdlp_help = open,
+            AccountMsg::YtDlpLook => {
+                self.look_for_ytdlp();
+                return if self.machine.ytdlp.is_some() {
+                    self.ytdlp_help = false;
+                    Command::toast(Toast::success(t!("music.youtube.found")).key("ytdlp"))
+                } else {
+                    Command::toast(Toast::warning(t!("music.youtube.still-missing")).key("ytdlp"))
+                };
+            }
             AccountMsg::Add(kind) => {
                 // Jellyfin is logged in to with a password only.
                 self.account_dialog = Some(Dialog { kind, ..Dialog::default() });
@@ -132,6 +162,7 @@ impl Music {
                     address: account.address.clone(),
                     user: account.user.clone(),
                     login: account.login,
+                    youtube_browser: BROWSERS.iter().position(|name| *name == account.browser).unwrap_or(0),
                     ..Dialog::default()
                 });
                 return Command::focus(FIRST);
@@ -144,6 +175,7 @@ impl Music {
                 self.typed(|dialog| dialog.login = login);
             }
             AccountMsg::Secret(typed) => self.typed(|dialog| dialog.secret = typed),
+            AccountMsg::Browser(at) => self.typed(|dialog| dialog.youtube_browser = at.min(BROWSERS.len() - 1)),
             AccountMsg::Pasted(typed) => self.typed(|dialog| {
                 if let Some(browser) = &mut dialog.browser {
                     browser.pasted = typed;
@@ -190,6 +222,9 @@ impl Music {
         if dialog.kind == Kind::Spotify {
             return self.browser_login();
         }
+        if dialog.kind == Kind::YouTube {
+            return self.youtube_login();
+        }
         let Some(dialog) = &mut self.account_dialog else { return Command::none() };
         let user = dialog.user.trim();
         let missing = dialog.secret.is_empty() || (dialog.login == Login::Password && user.is_empty());
@@ -213,12 +248,30 @@ impl Music {
                 let (address, user, password) = (dialog.address.clone(), user.to_owned(), dialog.secret.clone());
                 Box::new(move || Jellyfin::login(&address, &user, &password, &key).map(Client::Jellyfin))
             }
-            Kind::Spotify => return Command::none(),
+            Kind::Spotify | Kind::YouTube => return Command::none(),
         };
         self.tries += 1;
         let number = self.tries;
         dialog.trying = Some(number);
         Command::perform(move || Msg::Accounts(AccountMsg::Answered(number, connect())))
+    }
+
+    /// Tries the person's yt-dlp with the browser chosen: that it runs; whether it finds a YouTube
+    /// login there shows when the liked music is read.
+    fn youtube_login(&mut self) -> Command<Msg> {
+        let Some(program) = self.machine.ytdlp.clone() else { return Command::none() };
+        let Some(dialog) = &mut self.account_dialog else { return Command::none() };
+        if dialog.key.is_none() {
+            dialog.key =
+                Some(dialog.existing.clone().unwrap_or_else(|| accounts::new_key(Kind::YouTube, &self.accounts)));
+        }
+        let ytdlp = YtDlp::new(&program, BROWSERS[dialog.youtube_browser.min(BROWSERS.len() - 1)]);
+        self.tries += 1;
+        let number = self.tries;
+        dialog.trying = Some(number);
+        Command::perform(move || {
+            Msg::Accounts(AccountMsg::Answered(number, ytdlp.version().map(|_| Client::YouTube(ytdlp))))
+        })
     }
 
     /// Starts a login in the person's browser: Spotify's login page opens there, and qmus waits
@@ -316,6 +369,7 @@ impl Music {
         let name = match (name.is_empty(), dialog.kind) {
             (false, _) => name.to_owned(),
             (true, Kind::Spotify) => "Spotify".to_owned(),
+            (true, Kind::YouTube) => "YouTube Music".to_owned(),
             (true, _) => host_of(&dialog.address),
         };
         let Some(key) = dialog.key.clone() else { return Command::none() };
@@ -328,6 +382,11 @@ impl Music {
             login: dialog.login,
             // Logging in again keeps what the person chose about reporting plays.
             scrobble: self.accounts.iter().find(|kept| kept.key == key).is_none_or(|kept| kept.scrobble),
+            browser: if dialog.kind == Kind::YouTube {
+                BROWSERS[dialog.youtube_browser.min(BROWSERS.len() - 1)].to_owned()
+            } else {
+                String::new()
+            },
         };
         // Logging in again changes nothing that is kept, so the file is only written for a change.
         let changed = match self.accounts.iter_mut().find(|kept| kept.key == key) {
@@ -390,8 +449,11 @@ impl Music {
                 Standing::Connected => t!("music.accounts.connected"),
                 Standing::Failed(error) => words(error),
             };
-            let place =
-                if account.kind == Kind::Spotify { "Spotify Premium".to_owned() } else { account.address.clone() };
+            let place = match account.kind {
+                Kind::Spotify => "Spotify Premium".to_owned(),
+                Kind::YouTube => format!("YouTube Music · yt-dlp · {}", account.browser),
+                Kind::Subsonic | Kind::Jellyfin => account.address.clone(),
+            };
             let mut about = format!("{place} · {said}");
             if accounts::unencrypted(&account.address) {
                 about = format!("{about} · {}", t!("music.accounts.unencrypted-short"));
@@ -399,7 +461,7 @@ impl Music {
             list.row(SettingRow::new(account.name.clone()).description(about), |ui| {
                 ui.row(|ui| {
                     // Spotify's history takes no word from another player, so there is nothing to turn off.
-                    if account.kind != Kind::Spotify {
+                    if !matches!(account.kind, Kind::Spotify | Kind::YouTube) {
                         ui.add(
                             Switch::new(account.scrobble)
                                 .label(t!("music.accounts.scrobble"))
@@ -422,10 +484,17 @@ impl Music {
             "music.spotify.text",
             "add-spotify",
         ));
+        let youtube = self.machine.ytdlp.is_some().then_some((
+            Kind::YouTube,
+            "music.youtube.title",
+            "music.youtube.text",
+            "add-youtube",
+        ));
         for (kind, name, about, id) in [
             Some((Kind::Subsonic, "music.accounts.subsonic", "music.accounts.subsonic-text", "add-account")),
             Some((Kind::Jellyfin, "music.accounts.jellyfin", "music.accounts.jellyfin-text", "add-jellyfin")),
             spotify,
+            youtube,
         ]
         .into_iter()
         .flatten()
@@ -437,10 +506,53 @@ impl Music {
                 .id(id);
             });
         }
+        // Without the person's own yt-dlp, YouTube Music is still offered: the row says what is
+        // missing and how to install it. qmus installs nothing itself.
+        if self.machine.ytdlp.is_none() && self.machine.youtube_search.is_some() {
+            list.row(SettingRow::new(t!("music.youtube.title")).description(t!("music.youtube.missing")), |ui| {
+                ui.add(
+                    Button::new(t!("music.youtube.how-install")).on_press(Msg::Accounts(AccountMsg::YtDlpHelp(true))),
+                )
+                .id("install-youtube");
+            });
+        }
+    }
+
+    /// How to install yt-dlp: the command this machine's package manager installs it with, to
+    /// copy and run in a terminal, or yt-dlp's own page where there is no package manager qmus
+    /// knows. Nothing here runs a command.
+    fn ytdlp_window(&self, ui: &mut View<'_, Msg>) {
+        let command = self.machine.youtube_search.as_deref().and_then(crate::sources::youtube::install_command);
+        let modal = Modal::new()
+            .title(t!("music.youtube.install-title"))
+            .width(DIALOG)
+            .on_close(Msg::Accounts(AccountMsg::YtDlpHelp(false)))
+            .action(Button::new(t!("music.youtube.close")).on_press(Msg::Accounts(AccountMsg::YtDlpHelp(false))))
+            .action(
+                Button::new(t!("music.youtube.look-again"))
+                    .variant("primary")
+                    .on_press(Msg::Accounts(AccountMsg::YtDlpLook)),
+            );
+        ui.add_with(modal, |ui| {
+            ui.column(|ui| {
+                if let Some(command) = command {
+                    ui.add(Words::new(t!("music.youtube.install-text"))).fill_width();
+                    ui.add(CopyValue::new(command)).fill_width().id("ytdlp-command");
+                } else {
+                    ui.add(Words::new(t!("music.youtube.install-elsewhere"))).fill_width();
+                }
+            })
+            .gap(1)
+            .fill_width();
+        });
     }
 
     /// The account dialog or the question before removing one, when either is open.
     pub(super) fn account_dialogs(&self, ui: &mut View<'_, Msg>) {
+        if self.ytdlp_help {
+            self.ytdlp_window(ui);
+            return;
+        }
         if let Some(key) = &self.removing {
             let name = self.accounts.iter().find(|account| &account.key == key).map(|account| account.name.as_str());
             let modal = Modal::new()
@@ -464,6 +576,8 @@ impl Music {
             t!("music.accounts.log-in-title", name = dialog.name.as_str())
         } else if dialog.kind == Kind::Spotify {
             t!("music.spotify.add-title")
+        } else if dialog.kind == Kind::YouTube {
+            t!("music.youtube.add-title")
         } else {
             t!("music.accounts.add-title")
         };
@@ -498,7 +612,7 @@ impl Music {
                         .id(FIRST);
                     })
                     .fill_width();
-                    if dialog.kind != Kind::Spotify {
+                    if !matches!(dialog.kind, Kind::Spotify | Kind::YouTube) {
                         let mut address = Field::new(t!("music.accounts.address")).required(true);
                         if accounts::unencrypted(&dialog.address) {
                             address = address.hint(t!("music.accounts.unencrypted"));
@@ -524,7 +638,7 @@ impl Music {
                             .fill_width();
                         }
                     }
-                    if dialog.kind != Kind::Spotify && dialog.login == Login::Password {
+                    if !matches!(dialog.kind, Kind::Spotify | Kind::YouTube) && dialog.login == Login::Password {
                         ui.add_with(Field::new(t!("music.accounts.user")).required(true), |ui| {
                             ui.add(
                                 TextInput::new(dialog.user.clone())
@@ -537,6 +651,8 @@ impl Music {
                 }
                 if dialog.kind == Kind::Spotify {
                     self.spotify_part(ui, dialog);
+                } else if dialog.kind == Kind::YouTube {
+                    self.youtube_part(ui, dialog);
                 } else {
                     let secret = if dialog.login == Login::ApiKey {
                         t!("music.accounts.api-key")
@@ -570,6 +686,21 @@ impl Music {
 }
 
 impl Music {
+    /// The YouTube Music part of the account dialog: the browser yt-dlp reads the YouTube login of.
+    fn youtube_part(&self, ui: &mut View<'_, Msg>, dialog: &Dialog) {
+        ui.add(Words::new(t!("music.youtube.how")).role("secondary")).fill_width();
+        ui.add_with(Field::new(t!("music.youtube.browser")).error(dialog.problem.clone()), |ui| {
+            ui.add(
+                Segmented::new(BROWSER_NAMES)
+                    .wrap(true)
+                    .selected(dialog.youtube_browser)
+                    .on_select(|at| Msg::Accounts(AccountMsg::Browser(at))),
+            )
+            .id("youtube-browser");
+        })
+        .fill_width();
+    }
+
     /// The Spotify part of the account dialog: what the browser login asks of the person, and,
     /// once it is under way, the login page's address and a box for the address the browser
     /// ended on, for a browser on another machine.
@@ -621,5 +752,6 @@ pub(super) fn words(error: &SourceError) -> String {
         SourceError::Server(said) => t!("music.accounts.server", said = said.as_str()),
         SourceError::Address => t!("music.accounts.bad-address"),
         SourceError::Premium => t!("music.accounts.premium"),
+        SourceError::Wait(wait) => t!("music.accounts.wait", seconds = wait.as_secs().max(1).to_string().as_str()),
     }
 }

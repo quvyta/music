@@ -58,7 +58,7 @@ fn a_tiny_terminal_says_it_is_too_small() {
 fn a_narrow_terminal_keeps_the_track_and_both_times_on_screen() {
     let scratch = Scratch::new("screen-narrow");
     let folder = albums(&scratch);
-    let mut h = open_on(machine(&scratch), &folder, crate::locales::env(), 40);
+    let mut h = open_on(machine(&scratch), &folder, crate::locales::test_env(), 40);
     h.press("enter");
     wait_for(&mut h, |music| music.status().position >= Duration::from_millis(100));
     let screen = h.screen();
@@ -104,7 +104,7 @@ fn opus_files_are_listed_faint_and_say_they_cannot_be_played_yet() {
 fn the_key_overview_names_the_keys_the_keymap_gives() {
     let scratch = Scratch::new("screen-help");
     let folder = albums(&scratch);
-    let mut env = crate::locales::env();
+    let mut env = crate::locales::test_env();
     env.keymap_mut().bind(qframe::keymap::Scope::App, "play-pause", &["k".parse().expect("chord")]);
     let mut h = open_on(machine(&scratch), &folder, env, 100);
     h.press("?");

@@ -1,5 +1,7 @@
 //! Playing: choosing a row, holding and going on, and one track giving way to the next.
 
+use qframe::event::MouseKind;
+
 use super::*;
 
 #[test]
@@ -143,7 +145,7 @@ fn a_sound_device_that_goes_away_stops_the_player_and_says_so() {
     let scratch = Scratch::new("play-device-gone");
     let folder = albums(&scratch);
     let machine = Machine { audio: AudioOut::Vanishing(Duration::from_millis(300)), ..machine(&scratch) };
-    let mut h = open_on(machine, &folder, crate::locales::env(), 100);
+    let mut h = open_on(machine, &folder, crate::locales::test_env(), 100);
     h.press("enter");
     wait_for(&mut h, |music| state(music) == State::Stopped && music.status().problem.is_some());
     settle(&mut h);
@@ -190,6 +192,61 @@ fn the_volume_keys_and_the_mute_button_change_what_goes_out() {
     assert!((h.app().player.gain() - 0.729).abs() < 1e-4);
     h.press("+");
     assert!(h.screen().contains(" 95"), "{}", h.screen());
+}
+
+/// The first cell of the volume slider's rail, right of the mute button and the level.
+fn volume_rail(h: &Harness<Music>) -> (i32, i32) {
+    let glyph = h.env().icons().glyph("media-volume").into_owned();
+    let (x, y) = find(h, &glyph).unwrap_or_else(|| panic!("no volume:\n{}", h.screen()));
+    let row = h.screen().lines().nth(usize::try_from(y).expect("row")).expect("row").to_owned();
+    let after: String = row.chars().skip(usize::try_from(x).expect("column") + 1).collect();
+    let level = after.find("100").unwrap_or_else(|| panic!("no level beside the button:\n{}", h.screen()));
+    let level = i32::try_from(after[..level].chars().count()).expect("column");
+    // The level's three cells and the two between it and the rail.
+    (x + 1 + level + 3 + 2, y)
+}
+
+/// Lets real time pass until the loudest sample going out is `share` of the tone's level.
+fn wait_for_out(h: &mut Harness<Music>, share: f32) {
+    // The tracks are a sine at half of full scale.
+    let expected = 0.5 * share;
+    wait_for(h, |music| {
+        let out = music.player.loudest_out();
+        out > expected * 0.9 && out < expected * 1.01
+    });
+}
+
+#[test]
+fn the_volume_slider_sends_a_level_between_silent_and_whole_to_the_output() {
+    let scratch = Scratch::new("play-volume-slider");
+    tagged_wav(&scratch.path("music/uzun/1.wav"), 30.0, "Uzun Hava", "Kalben", "Uzun", 1);
+    let mut h = open(&scratch, &scratch.path("music"));
+    h.press("enter");
+    wait_for_out(&mut h, 1.0);
+    let (x, y) = volume_rail(&h);
+    // The rail is six cells, so its fourth stands at three fifths.
+    h.click(x + 3, y);
+    assert!(h.screen().contains(" 60"), "{}", h.screen());
+    wait_for_out(&mut h, 0.6 * 0.6 * 0.6);
+    h.mouse(MouseKind::ScrollDown, x + 3, y);
+    assert!(h.screen().contains(" 55"), "{}", h.screen());
+    wait_for_out(&mut h, 0.55 * 0.55 * 0.55);
+    h.press("+").press("+");
+    wait_for_out(&mut h, 0.65 * 0.65 * 0.65);
+}
+
+#[test]
+fn a_terminal_narrower_than_the_one_row_bar_still_has_the_volume() {
+    let scratch = Scratch::new("play-volume-narrow");
+    let folder = albums(&scratch);
+    let mut h = open_on(machine(&scratch), &folder, crate::locales::test_env(), 80);
+    h.press("enter");
+    settle(&mut h);
+    let (x, y) = volume_rail(&h);
+    h.click(x, y);
+    assert!(h.screen().contains(&h.env().icons().glyph("media-volume").into_owned()), "{}", h.screen());
+    assert!(h.screen().contains("  0 "), "{}", h.screen());
+    assert_eq!(h.app().player.gain(), 0.0);
 }
 
 /// The title of the track loaded, once there is one.

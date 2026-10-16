@@ -125,3 +125,11 @@ fn a_wait_that_is_stopped_ends_at_once() {
     );
     assert!(started.elapsed() < Duration::from_secs(10), "stopped long before its patience ran out");
 }
+
+#[test]
+fn a_token_endpoint_that_asks_for_a_long_wait_says_so() {
+    let server = FakeServer::start(|_| Response { status: 429, ..Response::json("{}") }.header("Retry-After", "120"));
+    let endpoints = Endpoints { authorize: String::new(), token: format!("{}/api/token", server.url()) };
+    assert_eq!(exchange(&endpoints, "client-1", "kod", "x").err(), Some(SourceError::Wait(Duration::from_secs(120))));
+    assert_eq!(server.requests().len(), 1);
+}

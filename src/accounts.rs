@@ -32,6 +32,9 @@ pub enum Kind {
     Jellyfin,
     /// A Spotify Premium account.
     Spotify,
+    /// YouTube Music, through the person's own yt-dlp.
+    #[serde(rename = "youtube")]
+    YouTube,
 }
 
 /// How the person logs in to an account.
@@ -67,6 +70,9 @@ pub struct Account {
     /// the file only when turned off.
     #[serde(default = "on", skip_serializing_if = "is_on")]
     pub scrobble: bool,
+    /// The browser whose YouTube login yt-dlp reads, for a YouTube Music account; its name only.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub browser: String,
 }
 
 /// The value a switch has until the person turns it off.
@@ -132,6 +138,7 @@ pub fn new_key(kind: Kind, taken: &[Account]) -> String {
         Kind::Subsonic => "subsonic",
         Kind::Jellyfin => "jellyfin",
         Kind::Spotify => "spotify",
+        Kind::YouTube => "youtube",
     };
     let mut hasher = RandomState::new().build_hasher();
     let free = |key: &String| taken.iter().all(|account| &account.key != key);
@@ -220,6 +227,7 @@ mod tests {
             user: "hakan".to_owned(),
             login: Login::Password,
             scrobble: true,
+            browser: String::new(),
         }
     }
 

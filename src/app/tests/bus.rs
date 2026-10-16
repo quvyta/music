@@ -17,7 +17,7 @@ use crate::mpris::tests::{Client, changes, ends, entries, text};
 fn served(scratch: &Scratch, folder: &Path) -> (Harness<Music>, Client) {
     let (socket, client) = ends();
     let machine = Machine { bus: Bus::Socket(Arc::new(socket)), ..machine(scratch) };
-    let mut h = open_on(machine, folder, crate::locales::env(), 100);
+    let mut h = open_on(machine, folder, crate::locales::test_env(), 100);
     wait_for(&mut h, |music| music.mpris.is_some());
     (h, client.join().expect("the client end connects"))
 }

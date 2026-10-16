@@ -4,9 +4,7 @@ use super::*;
 
 /// The eight cells of the visualizer, at the start of the player bar.
 fn bars(h: &Harness<Music>) -> String {
-    let screen = h.screen();
-    let bar = screen.lines().last().expect("the player bar");
-    bar.chars().skip(1).take(8).collect()
+    bar_row(h).chars().skip(1).take(8).collect()
 }
 
 /// Whether some column stands above the lowest line.

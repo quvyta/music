@@ -115,6 +115,10 @@ impl Spotify {
     ///
     /// As [`Spotify::ping`]; a page that fails fails the whole.
     pub fn catalogue(&self) -> Result<Vec<RemoteTrack>, SourceError> {
+        // The session gives them when it can, sparing the Web API Spotify rations.
+        if let Some(Ok(liked)) = self.audio.as_ref().and_then(|audio| audio.liked()) {
+            return Ok(liked);
+        }
         self.pages(&format!("{}/me/tracks", self.api), SONGS_PAGE, |item| item.get("track").and_then(track_of))
     }
 
@@ -185,10 +189,8 @@ impl Spotify {
     /// The answer of a `GET` of `address`, as JSON; a token Spotify says has run out is renewed
     /// once and the request sent again.
     fn call(&self, address: &str) -> Result<Value, SourceError> {
-        for again in [false, true] {
-            if again {
-                self.tokens.lock().unwrap_or_else(PoisonError::into_inner).expires = Instant::now();
-            }
+        let mut renewed = false;
+        for tries in 0.. {
             let token = self.access()?;
             let mut answer = self
                 .agent
@@ -197,6 +199,15 @@ impl Spotify {
                 .call()
                 .map_err(|error| SourceError::Unreachable(reach_of(&error)))?;
             let status = answer.status().as_u16();
+            let after = answer.headers().get("retry-after").and_then(|after| after.to_str().ok()).map(str::to_owned);
+            match super::rate_limited(status, after.as_deref(), tries) {
+                Some(Ok(wait)) => {
+                    std::thread::sleep(wait);
+                    continue;
+                }
+                Some(Err(error)) => return Err(error),
+                None => {}
+            }
             let text = answer
                 .body_mut()
                 .with_config()
@@ -204,7 +215,10 @@ impl Spotify {
                 .read_to_string()
                 .map_err(|error| SourceError::Unreachable(reach_of(&error)))?;
             match status {
-                401 if !again => continue,
+                401 if !renewed => {
+                    renewed = true;
+                    self.tokens.lock().unwrap_or_else(PoisonError::into_inner).expires = Instant::now();
+                }
                 200..=299 => return serde_json::from_str(&text).map_err(|_| SourceError::Server("not Spotify".into())),
                 401 | 403 => return Err(SourceError::Login),
                 404 => return Err(SourceError::NotFound),
